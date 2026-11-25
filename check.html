@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>frame check</title>
+<style>
+  body { margin: 0; background: #888; display: grid; place-items: center; min-height: 100vh; font: 13px ui-monospace, monospace; }
+  canvas { display: block; width: 960px; height: 540px; background: #fff; }
+  .info { position: fixed; top: 6px; left: 8px; color: #fff; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="info" id="info"></div>
+<script type="module">
+  // Renders one frame: check.html?step=fragmentation&t=4.2&theme=dark
+  import { loadAnim } from './src/anim/index.js';
+  import { renderFrame } from './src/player.js';
+  import { light, dark } from './src/palette.js';
+  const q = new URLSearchParams(location.search);
+  const id = q.get('step') || 'fragmentation';
+  const t = parseFloat(q.get('t') || '0');
+  const P = q.get('theme') === 'dark' ? dark : light;
+  const anim = await loadAnim(id);
+  const c = document.getElementById('c');
+  renderFrame(c, anim, t, { palette: P, dpr: 1, width: 960 });
+  document.getElementById('info').textContent = `${id} t=${t} / ${anim.duration}s${anim.placeholder ? ' (placeholder)' : ''}`;
+  window.__done = true;
+</script>
+</body>
+</html>

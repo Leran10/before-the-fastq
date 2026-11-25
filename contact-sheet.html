@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>contact sheet</title>
+<style>
+  body { margin: 0; background: #ddd; font: 12px ui-monospace, monospace; color: #222; padding: 10px; }
+  .row { display: grid; grid-template-columns: 150px repeat(5, 1fr); gap: 6px; align-items: center; margin-bottom: 8px; }
+  .row canvas { width: 100%; aspect-ratio: 16/9; background: #fff; display: block; border: 1px solid #bbb; }
+  .row .name b { display: block; } .row .name { font-size: 12px; }
+  .ph { color: #b00; }
+</style>
+</head>
+<body>
+<div id="sheet"></div>
+<script type="module">
+  // Every step's animation at 5 time points. contact-sheet.html?theme=dark&only=fragmentation,sbs
+  import { steps } from './src/content/steps.js';
+  import { loadAnim } from './src/anim/index.js';
+  import { renderFrame } from './src/player.js';
+  import { light, dark } from './src/palette.js';
+  const q = new URLSearchParams(location.search);
+  const P = q.get('theme') === 'dark' ? dark : light;
+  const only = q.get('only') ? q.get('only').split(',') : null;
+  const ids = Object.keys(steps).filter(id => !only || only.includes(id));
+  const sheet = document.getElementById('sheet');
+  for (const id of ids) {
+    const anim = await loadAnim(id);
+    const row = document.createElement('div'); row.className = 'row';
+    const fr = [0.04, 0.25, 0.47, 0.7, 0.92];
+    row.innerHTML = `<div class="name"><b>${id}</b>${anim.duration}s ${anim.placeholder ? '<span class="ph">PLACEHOLDER</span>' : ''}<br>${fr.map(f => (f * anim.duration).toFixed(1)).join(' / ')}</div>`;
+    for (const f of fr) {
+      const c = document.createElement('canvas');
+      row.appendChild(c);
+      renderFrame(c, anim, f * anim.duration, { palette: P, dpr: 1, width: 400 });
+    }
+    sheet.appendChild(row);
+  }
+  window.__done = true;
+</script>
+</body>
+</html>
