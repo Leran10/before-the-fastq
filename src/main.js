@@ -142,6 +142,7 @@ async function renderTrack(track) {
 }
 
 async function renderStep(id, track) {
+  const routeAtStart = parse().join('/');   // compared after the await below, so a navigation meanwhile is not overwritten
   const s = steps[id];
   const inTracks = tracksForStep(id);
   if (!track) track = inTracks[0] || null;
@@ -180,7 +181,7 @@ async function renderStep(id, track) {
     </div>` : ''}
   `;
   const anim = await loadAnim(id);
-  if (parse().join('/') !== (track ? `track/${track.id}/${id}` : `step/${id}`)) return; // navigated away meanwhile
+  if (parse().join('/') !== routeAtStart) return; // navigated away meanwhile
   player = createPlayer(document.getElementById('player'), anim);
 }
 
