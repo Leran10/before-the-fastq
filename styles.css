@@ -183,6 +183,26 @@ th { color: var(--ink-dim); font-weight: 600; font-size: 12.5px; text-transform:
 .search:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .footer-note { color: var(--ink-faint); font-size: 12.5px; margin-top: 50px; border-top: 1px solid var(--line); padding-top: 14px; }
 
+/* what can go wrong: failure → signature → tell */
+.section-lede { color: var(--ink-dim); font-size: 14px; margin: -4px 0 12px; }
+.failures { display: grid; gap: 8px; }
+.fhead, .failure { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1.6fr); gap: 0 18px; }
+.fhead { padding: 0 14px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.failure { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--alert); border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 14px; line-height: 1.45; }
+.failure small { display: none; }
+.f-what b { display: block; }
+.f-art { display: inline-block; margin-top: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--ink); background: var(--panel-2); }
+.f-art:hover { border-color: var(--alert); text-decoration: none; }
+.f-art::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--alert); margin-right: 6px; vertical-align: 1px; }
+.f-tell { color: var(--ink); }
+.f-tell::before { content: ''; display: block; width: 28px; height: 3px; border-radius: 2px; background: linear-gradient(90deg, var(--alert) 50%, var(--good) 50%); margin-bottom: 6px; }
+@media (max-width: 860px) {
+  .fhead { display: none; }
+  .failure { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .failure small { display: block; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 2px; }
+  .f-tell::before { display: none; }
+}
+
 @media (max-width: 860px) {
   .layout { grid-template-columns: minmax(0, 1fr); }
   .topbar { flex-wrap: wrap; row-gap: 6px; }

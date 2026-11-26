@@ -3,6 +3,7 @@
 import { steps } from './content/steps.js';
 import { tracks, trackById, stepEntries, tracksForStep, planned } from './content/tracks.js';
 import { artifacts, artifactsForStep } from './content/artifacts.js';
+import { failures } from './content/failures.js';
 import { loadAnim } from './anim/index.js';
 import { createPlayer, renderThumb } from './player.js';
 
@@ -107,7 +108,7 @@ function renderHome() {
       <span style="--c:var(--gold)">Look here</span>
       <span style="--c:var(--alert)">Artefact, bias, loss</span>
     </div>
-    <p class="footer-note">Every step page has three parts aimed at the analyst: <b>In your data</b> (what this step leaves behind in the reads), <b>Check in your files</b> (where to look), and <b>Ask the wet lab</b> (the questions whose answers change your pipeline).</p>
+    <p class="footer-note">Every step page has four parts aimed at the analyst: <b>In your data</b> (what this step leaves behind in the reads), <b>What can go wrong here</b> (how each bench failure looks in the FASTQ, and how to tell it from biology), <b>Check in your files</b> (where to look), and <b>Ask the wet lab</b> (the questions whose answers change your pipeline).</p>
   `;
 }
 
@@ -168,6 +169,16 @@ async function renderStep(id, track) {
       <div class="section"><h2>What happens at the bench</h2>${s.bench.map(p => `<p>${md(p)}</p>`).join('')}</div>
       ${s.variants?.length ? `<div class="section"><h2>Variants you will meet in a Methods section</h2><div class="variants">${s.variants.map(v => `<div class="variant"><b>${esc(v.name)}</b>${md(v.text)}</div>`).join('')}</div></div>` : ''}
       <div class="section"><h2>In your data <span class="tag">consequences</span></h2>${list(s.data)}</div>
+      ${failures[id]?.length ? `<div class="section"><h2>What can go wrong here <span class="tag">bench or biology?</span></h2>
+        <p class="section-lede">Each row is a way this step fails, the trace it leaves in the FASTQ or downstream, and how to tell that trace from real biology.</p>
+        <div class="failures">
+          <div class="fhead"><span>At the bench</span><span>In your FASTQ / downstream</span><span>Bench or biology? How to tell</span></div>
+          ${failures[id].map(f => `<div class="failure">
+            <div class="f-what"><b>${md(f.what)}</b>${f.artifact && artifacts[f.artifact] ? `<a class="f-art" href="#/artifact/${f.artifact}">${esc(artifacts[f.artifact].title)}</a>` : ''}</div>
+            <div class="f-sig"><small>In your FASTQ / downstream</small>${md(f.signature)}</div>
+            <div class="f-tell"><small>Bench or biology?</small>${md(f.tell)}</div>
+          </div>`).join('')}
+        </div></div>` : ''}
       <div class="section two-col">
         <div><h2>Check in your files</h2>${list(s.check)}</div>
         <div><h2>Ask the wet lab</h2>${list(s.ask)}</div>
@@ -190,7 +201,7 @@ async function renderAllSteps() {
   const ids = Object.keys(steps);
   main.innerHTML = `<h1>All steps</h1><p class="lede">${ids.length} steps in the library. Each is written once and reused by every workflow that contains it.</p>
     <input class="search" id="q" placeholder="Filter steps… (e.g. adapter, PCR, strand)" aria-label="Filter steps">
-    <div class="cards" id="stepcards">${ids.map(id => `<a class="card step-card" href="#/step/${id}" data-text="${esc((steps[id].title + ' ' + steps[id].short + ' ' + (steps[id].data || []).join(' ')).toLowerCase())}"><canvas data-step="${id}"></canvas><h3>${esc(steps[id].title)}</h3><p>${esc(steps[id].short)}</p></a>`).join('')}</div>`;
+    <div class="cards" id="stepcards">${ids.map(id => `<a class="card step-card" href="#/step/${id}" data-text="${esc((steps[id].title + ' ' + steps[id].short + ' ' + (steps[id].data || []).join(' ') + ' ' + (failures[id] || []).map(f => f.what + ' ' + f.signature).join(' ')).toLowerCase())}"><canvas data-step="${id}"></canvas><h3>${esc(steps[id].title)}</h3><p>${esc(steps[id].short)}</p></a>`).join('')}</div>`;
   document.getElementById('q').addEventListener('input', e => {
     const q = e.target.value.toLowerCase();
     main.querySelectorAll('#stepcards .card').forEach(c => { c.style.display = !q || c.dataset.text.includes(q) ? '' : 'none'; });
@@ -228,7 +239,7 @@ function renderAbout() {
   main.innerHTML = `<h1>About</h1>
     <p class="lede">A visual reference for the part of a sequencing project that happens before the data exist.</p>
     <p>Bioinformaticians inherit FASTQ files and, with them, every decision the wet lab made: how the sample was stored, how cells were lysed, how many PCR cycles were run, which indexes were chosen, which instrument was used. Most of those decisions leave a fingerprint in the reads, and most analysis mistakes come from not knowing which fingerprints to expect.</p>
-    <p>This site walks through the common workflows step by step. Each step has an animation that shows what happens to the molecules, and three sections written for the analyst: what the step does to your data, where to look for it in your files, and what to ask the people who made the library.</p>
+    <p>This site walks through the common workflows step by step. Each step has an animation that shows what happens to the molecules, and four sections written for the analyst: what the step does to your data, what can go wrong at the bench and how that failure looks in the FASTQ compared with real biology, where to look for it in your files, and what to ask the people who made the library.</p>
     <h2>Design</h2>
     <ul>
       <li>Every animation is drawn as a pure function of time, so scrubbing is exact and any frame can be reproduced.</li>

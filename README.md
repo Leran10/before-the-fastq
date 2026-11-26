@@ -43,6 +43,8 @@ Every step page has:
 - **What happens at the bench**,
 - **Variants you will meet in a Methods section**,
 - **In your data** – consequences in the reads,
+- **What can go wrong here** – each bench failure, the trace it leaves in the
+  FASTQ or downstream, and how to tell that trace from real biology,
 - **Check in your files** – where to look (FastQC modules, Picard metrics, RSeQC, NanoPlot…),
 - **Ask the wet lab** – questions whose answers change the pipeline.
 
@@ -69,6 +71,7 @@ src/
     steps.js          the step library (text)
     tracks.js         workflows = ordered lists of step ids + notes
     artifacts.js      artefact index, linked to steps
+    failures.js       per step: bench failure → FASTQ signature → bench-or-biology tell
   anim/
     index.js          loads ./anim/<step-id>.js on demand; placeholder if missing
     <step-id>.js      one animation per step
@@ -115,7 +118,8 @@ lets `contact-sheet.html` render any frame for review.
 2. Add `src/anim/<step-id>.js` following the interface above (helpers in `src/draw.js`).
 3. Put the id in one or more workflows in `src/content/tracks.js`.
 4. Link artefacts in `src/content/artifacts.js` (`causes: [...]`).
-5. Review frames: `check.html?step=<id>&t=4.2` or the contact sheet.
+5. Add 3–5 failure modes to `src/content/failures.js` (`what`, `signature`, `tell`, optional `artifact`).
+6. Review frames: `check.html?step=<id>&t=4.2` or the contact sheet.
 
 Rendering frames headlessly for review:
 
