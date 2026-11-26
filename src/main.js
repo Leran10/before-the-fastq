@@ -4,10 +4,11 @@ import { steps } from './content/steps.js';
 import { tracks, trackById, stepEntries, tracksForStep, planned } from './content/tracks.js';
 import { artifacts, artifactsForStep } from './content/artifacts.js';
 import { failures } from './content/failures.js';
+import { finder, byAnalysis, triage } from './content/finder.js';
 import { loadAnim } from './anim/index.js';
 import { createPlayer, renderThumb } from './player.js';
 
-export const VERSION = '2026-11-26c';
+export const VERSION = '2026-11-26d';
 const main = document.getElementById('main');
 document.getElementById('build').textContent = 'v ' + VERSION;
 const sidebar = document.getElementById('sidebar');
@@ -51,6 +52,7 @@ async function route() {
 async function dispatch(parts) {
   if (parts.length === 0) return renderHome();
   if (parts[0] === 'tracks') return renderTracks();
+  if (parts[0] === 'find') return renderFinder();
   if (parts[0] === 'track' && parts[1] && trackById[parts[1]]) {
     if (parts[2] && steps[parts[2]]) return renderStep(parts[2], trackById[parts[1]]);
     return renderTrack(trackById[parts[1]]);
@@ -90,6 +92,7 @@ function renderHome() {
       <h1>What happened to your sample before it became a FASTQ file</h1>
       <p class="lede">Animated, step-by-step wet-lab workflows for people who analyse sequencing data but have never held the pipette. Each step shows what was physically done, what it changed about the molecules, and what that means for the reads you are about to process.</p>
     </div>
+    <a class="callout find-callout" href="#/find"><b>Not sure which workflow your dataset is?</b> Start from the analysis you have to do, the SRA / GEO library strategy, or the shape of the reads. <span class="go">Which workflow is mine? →</span></a>
     <h2>Workflows</h2>
     <div class="cards">
       ${tracks.map(t => `<a class="card" href="#/track/${t.id}"><h3>${esc(t.title)}</h3><p>${esc(t.subtitle)}</p><div class="meta">${stepEntries(t).length} steps · ${esc(t.output)}</div></a>`).join('')}
@@ -120,6 +123,33 @@ function renderTracks() {
     <div class="cards">${tracks.map(t => `<a class="card" href="#/track/${t.id}"><h3>${esc(t.title)}</h3><p>${esc(t.blurb)}</p><div class="meta">${stepEntries(t).length} steps · ${esc(t.output)}</div></a>`).join('')}</div>`;
 }
 
+function renderFinder() {
+  sidebarTracks();
+  const link = id => `<a class="tlink" href="#/track/${id}">${esc(trackById[id].title)}</a>`;
+  const links = ids => (Array.isArray(ids) ? ids : [ids]).map(link).join('');
+  const searchText = t => [t.title, t.subtitle, ...(finder[t.id]?.aka || []), ...(finder[t.id]?.strategy || []), ...(finder[t.id]?.recognise || []), ...(finder[t.id]?.analyses || [])].join(' ').toLowerCase();
+  main.innerHTML = `
+    <h1>Which workflow is mine?</h1>
+    <p class="lede">You have a dataset and an analysis to do, but the wet-lab name on it is unfamiliar. Three ways in: the analysis you need, the labels in the metadata, or the shape of the reads themselves.</p>
+    <input class="search" id="q" placeholder="Search everything here… (e.g. exome, CUT&Tag, peak calling, WXS, 2×300, UMI)" aria-label="Search workflows">
+    <div id="find-sections">
+    <h2>1. From the analysis you have to do</h2>
+    <div class="findtable" id="by-analysis">${byAnalysis.map(a => `<div class="findrow" data-text="${esc((a.task + ' ' + a.tracks.map(id => trackById[id].title).join(' ') + ' ' + (a.note || '')).toLowerCase())}"><div class="f-task">${esc(a.task)}</div><div class="f-tracks">${links(a.tracks)}${a.note ? `<small>${esc(a.note)}</small>` : ''}</div></div>`).join('')}</div>
+    <h2>2. From the metadata label</h2>
+    <p class="section-lede">SRA / ENA / GEO record every run with a <code>LIBRARY_STRATEGY</code>, <code>LIBRARY_SOURCE</code> and <code>LIBRARY_SELECTION</code>; Methods sections use the names in the second column.</p>
+    <div class="findtable" id="by-label">${tracks.map(t => `<div class="findrow" data-text="${esc(searchText(t))}"><div class="f-task">${(finder[t.id]?.strategy || []).map(x => `<code>${esc(x)}</code>`).join('<br>')}</div><div class="f-tracks">${link(t.id)}<small>${(finder[t.id]?.aka || []).map(esc).join(' · ')}</small></div></div>`).join('')}</div>
+    <h2>3. From the reads alone</h2>
+    <p class="section-lede">Open the FASTQ (or the first QC report) and go down this list; stop at the first yes.</p>
+    <ol class="triage" id="by-reads">${triage.map(q => `<li data-text="${esc((q.ask + ' ' + q.why + ' ' + (Array.isArray(q.then) ? q.then : [q.then]).map(id => trackById[id].title).join(' ')).toLowerCase())}"><b>${esc(q.ask)}</b><div class="f-tracks">${links(q.then)}<small>${esc(q.why)}</small></div></li>`).join('')}</ol>
+    <h2>4. What each workflow is used for</h2>
+    <div class="cards" id="by-track">${tracks.map(t => `<a class="card" href="#/track/${t.id}" data-text="${esc(searchText(t))}"><h3>${esc(t.title)}</h3><p>${(finder[t.id]?.analyses || []).map(esc).join(' · ')}</p><div class="meta">${esc((finder[t.id]?.aka || []).slice(0, 4).join(' · '))}</div></a>`).join('')}</div>
+    </div>`;
+  document.getElementById('q').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    main.querySelectorAll('[data-text]').forEach(el => { el.style.display = !q || el.dataset.text.includes(q) ? '' : 'none'; });
+  });
+}
+
 async function renderTrack(track) {
   sidebarForTrack(track, null);
   const entries = track.steps;
@@ -130,6 +160,11 @@ async function renderTrack(track) {
     <p class="lede">${esc(track.subtitle)}</p>
     <p>${esc(track.blurb)}</p>
     <div class="note"><b>What you receive:</b> ${esc(track.output)}</div>
+    ${finder[track.id] ? `<div class="section two-col fit">
+      <div><h2>Is this your data?</h2>${list(finder[track.id].recognise)}<p class="aka"><b>Also called:</b> ${finder[track.id].aka.map(esc).join(' · ')}</p><p class="aka"><b>Metadata:</b> ${finder[track.id].strategy.map(x => `<code>${esc(x)}</code>`).join(' ')}</p></div>
+      <div><h2>Analyses this data supports</h2>${list(finder[track.id].analyses)}<p class="aka"><a href="#/find">All analyses and workflows →</a></p></div>
+    </div>` : ''}
+    <h2 class="stepper-title">Steps</h2>
     <div class="stepper">
       ${entries.map(e => {
         if (e.divider) return `<div class="divider">— ${esc(e.divider)} —</div>`;
@@ -241,7 +276,7 @@ function renderAbout() {
   main.innerHTML = `<h1>About</h1>
     <p class="lede">A visual reference for the part of a sequencing project that happens before the data exist.</p>
     <p>Bioinformaticians inherit FASTQ files and, with them, every decision the wet lab made: how the sample was stored, how cells were lysed, how many PCR cycles were run, which indexes were chosen, which instrument was used. Most of those decisions leave a fingerprint in the reads, and most analysis mistakes come from not knowing which fingerprints to expect.</p>
-    <p>This site walks through the common workflows step by step. Each step has an animation that shows what happens to the molecules, and four sections written for the analyst: what the step does to your data, what can go wrong at the bench and how that failure looks in the FASTQ compared with real biology, where to look for it in your files, and what to ask the people who made the library.</p>
+    <p>This site walks through the common workflows step by step. The <a href="#/find">Which workflow is mine?</a> page maps analysis tasks, metadata labels and read shapes to workflows. Each step has an animation that shows what happens to the molecules, and four sections written for the analyst: what the step does to your data, what can go wrong at the bench and how that failure looks in the FASTQ compared with real biology, where to look for it in your files, and what to ask the people who made the library.</p>
     <h2>Design</h2>
     <ul>
       <li>Every animation is drawn as a pure function of time, so scrubbing is exact and any frame can be reproduced.</li>

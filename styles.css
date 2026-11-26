@@ -197,6 +197,28 @@ th { color: var(--ink-dim); font-weight: 600; font-size: 12.5px; text-transform:
 .f-art::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--alert); margin-right: 6px; vertical-align: 1px; }
 .f-tell { color: var(--ink); }
 .f-tell::before { content: ''; display: block; width: 28px; height: 3px; border-radius: 2px; background: linear-gradient(90deg, var(--alert) 50%, var(--good) 50%); margin-bottom: 6px; }
+/* which workflow is mine */
+.find-callout { display: block; color: var(--ink); margin: 18px 0 6px; }
+.find-callout:hover { text-decoration: none; border-color: var(--gold); }
+.find-callout .go { display: inline-block; margin-left: 8px; color: var(--accent); font-weight: 600; }
+.findtable { display: grid; gap: 6px; margin: 10px 0 22px; }
+.findrow { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr); gap: 0 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+.f-task { font-weight: 600; }
+.f-task code { font-weight: 500; font-size: 12.5px; }
+.f-tracks .tlink { display: inline-block; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; padding: 2px 10px; margin: 0 6px 6px 0; font-size: 13px; color: var(--ink); }
+.f-tracks .tlink:hover { border-color: var(--accent); text-decoration: none; }
+.f-tracks small { display: block; color: var(--ink-dim); font-size: 12.5px; }
+.triage { padding-left: 22px; margin: 10px 0 22px; }
+.triage li { margin: 0 0 12px; font-size: 14px; }
+.triage li b { display: block; margin-bottom: 4px; }
+.fit { margin-top: 14px; }
+.fit h2 { font-size: 16px; }
+.fit ul { font-size: 14px; }
+.aka { font-size: 13px; color: var(--ink-dim); }
+.aka code { font-size: 12px; }
+.stepper-title { margin: 18px 0 6px; font-size: 18px; }
+@media (max-width: 860px) { .findrow { grid-template-columns: minmax(0, 1fr); gap: 6px; } }
+
 @media (max-width: 860px) {
   .fhead { display: none; }
   .failure { grid-template-columns: minmax(0, 1fr); gap: 8px; }

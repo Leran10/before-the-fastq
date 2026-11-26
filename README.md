@@ -37,6 +37,10 @@ to GitHub Pages (serve the repository root).
 | Hybrid capture: exome, panels, viral capture | 17 | 2×100–150 paired FASTQ, 60–80 % on target; HsMetrics |
 | Tiled amplicon viral sequencing (ARTIC) | 15 | Amplicon-shaped coverage; consensus genome with N runs at dropouts |
 
+A **Which workflow is mine?** page (`#/find`) maps analysis tasks, SRA/GEO
+library-strategy labels and the shape of the reads to the right workflow, and
+every workflow page opens with "Is this your data?" and the analyses it supports.
+
 Steps are written once and reused across workflows (61 steps in the library);
 workflow-specific caveats appear as notes. A cross-cutting **artifact index**
 (duplicates, adapter read-through, index hopping, poly-G, strandedness, …)
@@ -77,6 +81,7 @@ src/
     tracks.js         workflows = ordered lists of step ids + notes
     artifacts.js      artefact index, linked to steps
     failures.js       per step: bench failure → FASTQ signature → bench-or-biology tell
+    finder.js         per workflow: aliases, metadata labels, how to recognise it, analyses; task → workflow index; read-shape triage
   anim/
     index.js          loads ./anim/<step-id>.js on demand; placeholder if missing
     <step-id>.js      one animation per step
