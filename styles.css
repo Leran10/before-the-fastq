@@ -181,6 +181,7 @@ th { color: var(--ink-dim); font-weight: 600; font-size: 12.5px; text-transform:
 .hero .lede { font-size: 18px; }
 .search { width: 100%; max-width: 480px; font: inherit; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); margin: 12px 0; }
 .search:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.build { position: fixed; right: 10px; bottom: 8px; font-size: 11px; color: var(--ink-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .8; pointer-events: auto; z-index: 5; }
 .footer-note { color: var(--ink-faint); font-size: 12.5px; margin-top: 50px; border-top: 1px solid var(--line); padding-top: 14px; }
 
 /* what can go wrong: failure → signature → tell */
