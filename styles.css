@@ -182,6 +182,8 @@ th { color: var(--ink-dim); font-weight: 600; font-size: 12.5px; text-transform:
 .search { width: 100%; max-width: 480px; font: inherit; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); margin: 12px 0; }
 .search:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .build { position: fixed; right: 10px; bottom: 8px; font-size: 11px; color: var(--ink-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .8; pointer-events: auto; z-index: 5; }
+.update-banner { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 13.5px; box-shadow: 0 6px 24px rgba(0,0,0,.25); z-index: 20; max-width: calc(100% - 32px); }
+.update-banner button { margin-left: 10px; border: 0; border-radius: 999px; padding: 4px 12px; font: inherit; font-weight: 600; background: var(--gold); color: #1f2328; cursor: pointer; }
 .footer-note { color: var(--ink-faint); font-size: 12.5px; margin-top: 50px; border-top: 1px solid var(--line); padding-top: 14px; }
 
 /* what can go wrong: failure → signature → tell */

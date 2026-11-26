@@ -88,6 +88,8 @@ src/
 check.html            render one frame: ?step=<id>&t=<s>&theme=dark
 contact-sheet.html    every animation at five time points (review tool)
 serve.py              no-cache dev server
+version.json          current version; bump.sh updates it, main.js and index.html together
+bump.sh               ./bump.sh 2026-11-27a before committing a deploy (cache busting + reload banner)
 ```
 
 ### The one invariant

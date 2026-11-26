@@ -8,9 +8,28 @@ import { finder, byAnalysis, triage } from './content/finder.js';
 import { loadAnim } from './anim/index.js';
 import { createPlayer, renderThumb } from './player.js';
 
-export const VERSION = '2026-11-26d';
+export const VERSION = '2026-11-26e';
 const main = document.getElementById('main');
 document.getElementById('build').textContent = 'v ' + VERSION;
+
+// Tell an open tab when a newer version has been deployed (browsers and the
+// GitHub Pages cache otherwise keep old scripts; hash navigation never reloads).
+let lastVersionCheck = 0;
+async function checkVersion() {
+  if (Date.now() - lastVersionCheck < 60000) return;
+  lastVersionCheck = Date.now();
+  try {
+    const r = await fetch(new URL('version.json', document.baseURI) + '?t=' + Date.now(), { cache: 'no-store' });
+    const { v } = await r.json();
+    if (v && v !== VERSION && !document.getElementById('update-banner')) {
+      const b = document.createElement('div');
+      b.id = 'update-banner'; b.className = 'update-banner';
+      b.innerHTML = `A newer version of this site is available (${esc(v)}; you have ${esc(VERSION)}). <button type="button">Reload</button>`;
+      b.querySelector('button').addEventListener('click', () => location.reload());
+      document.body.appendChild(b);
+    }
+  } catch { /* offline or local file: ignore */ }
+}
 const sidebar = document.getElementById('sidebar');
 let player = null;
 
@@ -42,6 +61,7 @@ function parse() {
 
 async function route() {
   if (player) { player.destroy(); player = null; }
+  checkVersion();
   const parts = parse();
   document.querySelectorAll('.topnav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#/' + (parts[0] || '')));
   window.scrollTo(0, 0);
