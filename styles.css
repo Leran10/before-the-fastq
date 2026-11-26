@@ -177,7 +177,7 @@ th { color: var(--ink-dim); font-weight: 600; font-size: 12.5px; text-transform:
 .legend span::before { content: ''; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -2px; background: var(--c); }
 
 .hero { padding: 24px 0 8px; text-align: center; }
-.hero h1 { font-size: 40px; max-width: 20ch; margin-left: auto; margin-right: auto; }
+.hero h1 { font-size: clamp(18px, 2.25vw, 36px); white-space: nowrap; margin-left: auto; margin-right: auto; }
 .hero .lede { font-size: 18px; margin-left: auto; margin-right: auto; }
 .search { width: 100%; max-width: 480px; font: inherit; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); margin: 12px 0; }
 .search:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
@@ -234,7 +234,7 @@ th { color: var(--ink-dim); font-weight: 600; font-size: 12.5px; text-transform:
   .topnav { width: 100%; margin-left: 0; order: 3; }
   .theme-toggle { margin-left: auto; }
   .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); max-height: 40vh; }
-  .hero h1 { font-size: 30px; }
+  .hero h1 { font-size: 30px; white-space: normal; }
   .stepper a { grid-template-columns: 1fr; }
   .stepper canvas { width: 100%; height: auto; aspect-ratio: 16/9; }
   .topnav { gap: 10px; }

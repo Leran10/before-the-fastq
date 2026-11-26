@@ -8,7 +8,7 @@ import { finder, byAnalysis, triage } from './content/finder.js';
 import { loadAnim } from './anim/index.js';
 import { createPlayer, renderThumb } from './player.js';
 
-export const VERSION = '2026-11-26f';
+export const VERSION = '2026-11-26g';
 const main = document.getElementById('main');
 document.getElementById('build').textContent = 'v ' + VERSION;
 
