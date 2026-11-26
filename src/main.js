@@ -7,7 +7,7 @@ import { failures } from './content/failures.js';
 import { loadAnim } from './anim/index.js';
 import { createPlayer, renderThumb } from './player.js';
 
-export const VERSION = '2026-11-26a';
+export const VERSION = '2026-11-26b';
 const main = document.getElementById('main');
 document.getElementById('build').textContent = 'v ' + VERSION;
 const sidebar = document.getElementById('sidebar');

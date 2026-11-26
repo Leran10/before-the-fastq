@@ -1416,4 +1416,449 @@ export const failures = {
     },
   ],
 
+  'nuclei-isolation': [
+    {
+      what: 'Dead or dying cells in the input (viability well below ~90 %)',
+      signature: 'Flat, genome-wide background: TSS enrichment below ~5, FRiP under 0.1–0.2, a fragment-size histogram without nucleosome peaks, and a smear instead of a ladder on the Bioanalyzer, with normal read counts and quality scores.',
+      tell: 'Bench if the low signal-to-noise tracks recorded viability, time between harvest and lysis, or a freeze–thaw, and affects every locus equally. Biology does not remove the nucleosome ladder: a cell type with globally lower accessibility still shows TSS enrichment and periodic fragment sizes, and the difference reproduces in fresh, viability-matched replicates.',
+      artifact: 'low-tss-enrichment',
+    },
+    {
+      what: 'Mitochondria not removed: no digitonin, no wash, or the old 2013 lysis',
+      signature: '`samtools idxstats` shows 20–60 % of reads on chrM; usable depth is a fraction of what was sequenced; duplicate rate looks inflated because chrM is deeply over-sampled.',
+      tell: 'Bench if the chrM fraction is high in every sample of a batch and matches the lysis protocol in the Methods. A biological difference in mitochondrial copy number (heart, liver, activated T cells) shifts the fraction by a few percentage points between cell types, not by tens of points across a whole run, and persists after Omni-ATAC lysis.',
+      artifact: 'mito-reads',
+    },
+    {
+      what: 'Over-lysis: detergent too strong or too long, nuclei burst and chromatin spills',
+      signature: 'Background coverage over gene deserts and heterochromatin, low FRiP, short fragments without periodicity, and often a low yield that needed extra PCR cycles; in scATAC a cloud of barcodes with few fragments and low TSS enrichment, plus fewer cells called than loaded.',
+      tell: 'Bench if the whole sample is noisy and the damage follows lysis time or buffer batch; released chromatin is cut everywhere, so no locus is spared. Biology (a globally open state such as some pluripotent or activated cells) still concentrates cut sites at promoters and enhancers and keeps the nucleosome ladder.',
+      artifact: 'nucleosome-ladder',
+    },
+    {
+      what: 'Cell count wrong: debris counted as cells, or clumps counted as one',
+      signature: 'Too few real nuclei: duplicate rate 50–80 %, low NRF and PBC, many extra PCR cycles recorded, and peak counts that saturate early in a subsampling curve. Too many nuclei: large fragments, weak nucleosome-free peak, under-tagmented library.',
+      tell: 'Bench if complexity metrics correlate with the recorded cycle number or counting method and the same cell type in another batch is fine. Biology never changes how many distinct fragments a library contains for a given number of nuclei; low complexity is always input or amplification.',
+      artifact: 'low-input',
+    },
+    {
+      what: 'Clumped nuclei or debris loaded for scATAC',
+      signature: 'Barcodes with two to three times the median fragments and mixed-lineage accessibility (doublets); a large population of low-fragment, low-TSS barcodes called as cells; cell recovery far from the targeted number.',
+      tell: 'Bench if the “mixed” barcodes have more fragments than either parent type and scale with loading density, and if the low-quality cloud disappears with a stricter TSS cut-off. Biology if an intermediate population has a normal fragment count, its own peaks absent from both neighbours, and appears at the same frequency across loadings.',
+      artifact: 'doublets',
+    },
+  ],
+
+  'chromatin-tagmentation': [
+    {
+      what: 'Over-tagmentation: too much Tn5, too long, or too few nuclei for the enzyme',
+      signature: 'Fragment-size histogram dominated by fragments under 100 bp with little or no nucleosome periodicity; FRiP and TSS enrichment reduced; with 2×50 reads a tail of inserts shorter than the read and adapter read-through; peaks broad and flat.',
+      tell: 'Bench if the collapse is uniform across the genome and tracks enzyme lot, volume or reaction time, and the same sample re-transposed at a lower ratio recovers the ladder. Biology (a genuinely more open cell state) raises the nucleosome-free fraction at regulatory elements while the mono-nucleosome peak remains visible.',
+      artifact: 'nucleosome-ladder',
+    },
+    {
+      what: 'Under-tagmentation: too little enzyme, too many nuclei, cold or short incubation',
+      signature: 'Bioanalyzer trace with most material above 1 kb, low library yield, many PCR cycles needed, strong mono- and di-nucleosome peaks but a weak nucleosome-free peak, and a low fraction of properly paired reads if the aligner insert limit is small.',
+      tell: 'Bench if every sample in the batch shows the same large-fragment profile and the yield was low; biology cannot make Tn5 cut less often everywhere. A genuinely closed chromatin state still gives a normal nucleosome-free peak at housekeeping promoters.',
+      artifact: 'insert-size',
+    },
+    {
+      what: 'Tn5 batch or transposition conditions differ between groups of samples',
+      signature: 'PCA of fragments-in-peaks separates samples by transposition date or enzyme lot; fragment-size profile, TSS enrichment and the nucleosome-free fraction co-vary with that split; thousands of “differential” peaks between groups processed on different days.',
+      tell: 'Bench if the split aligns with Tn5 lot or date in the manifest, is strongest in the quality metrics, and shrinks when FRiP or TSS enrichment is included as a covariate. Biology if the differences are concentrated at loci with known regulators of the condition, survive the covariate, and replicate across batches that mix conditions.',
+      artifact: 'batch-effects',
+    },
+    {
+      what: 'Reaction not stopped promptly: Tn5 left bound and active before clean-up',
+      signature: 'Fragment-size distributions that differ between samples handled in sequence (later samples shorter), a drifting nucleosome-free fraction across a plate, and a mild loss of nucleosome periodicity in the last-processed samples.',
+      tell: 'Bench if the shift follows processing order within a batch. Biology does not know what position a sample had in the rack.',
+      artifact: 'insert-size',
+    },
+    {
+      what: 'Tn5 insertion-sequence preference read as a transcription-factor footprint',
+      signature: 'Aggregate cut-site profiles show a dip or spike at motif centres for nearly every motif tested, including factors not expressed in the cell type; the pattern is identical in naked-DNA (deproteinised) ATAC controls.',
+      tell: 'Bench if the footprint persists after Tn5 bias correction (TOBIAS, HINT-ATAC, seqOutBias) is removed, is present in naked-DNA controls and does not change between conditions. Biology if the footprint depth tracks the factor’s expression and binding (ChIP or CUT&Tag), differs between conditions, and survives bias correction.',
+      artifact: 'tn5-shift',
+    },
+  ],
+
+  'atac-fragments': [
+    {
+      what: 'Tn5 shift not applied, or applied twice, before footprinting or cut-site analysis',
+      signature: 'Footprints and cut-site summits offset by ~9 bp between strands; motif centres sit beside, not under, the protected region; strand-split cut profiles do not overlay; base-resolution results from different pipelines disagree by a constant offset.',
+      tell: 'Compute, always: a strand-specific offset of 4–5 bp in both directions is the geometry of the enzyme, not of the genome. Re-shifting (or un-shifting) the BAM aligns the strands; no biological signal has a fixed strand-dependent offset.',
+      artifact: 'tn5-shift',
+    },
+    {
+      what: 'Mitochondrial reads kept through deduplication, normalisation or peak calling',
+      signature: 'The strongest “peaks” in the genome are on chrM or on nuclear mitochondrial insertions (NUMTs); duplicate rates look catastrophic because chrM reads are near-identical; library-size normalisation is dominated by the mitochondrial fraction and shifts every nuclear peak.',
+      tell: 'Compute if removing chrM before these steps brings duplication, normalisation factors and NUMT peaks back in line. Biology at NUMTs is rare and would be a local, reproducible signal with normal fragment structure, not a pile-up that scales with the sample’s chrM fraction.',
+      artifact: 'mito-reads',
+    },
+    {
+      what: 'Peaks called ChIP-style: default MACS2 model, or per-sample peak sets compared directly',
+      signature: '“No paired peaks” model-building failures or peaks shifted off the cut sites; peak numbers that scale with depth; thousands of differential regions that are simply present in deeper samples and absent in shallower ones.',
+      tell: 'Compute if peak counts follow read depth and the differential set collapses after calling on cut sites, building a consensus set and counting fragments per region. Biology produces regions that change in a consistent direction across replicates regardless of each sample’s depth.',
+    },
+    {
+      what: 'Sample quality (FRiP, TSS enrichment) confounded with the condition being tested',
+      signature: 'One group appears to “lose” accessibility at most peaks and “gain” it in gene deserts; the top principal component correlates with FRiP; differential peaks are mostly weak peaks moving towards background.',
+      tell: 'Bench if the global shift disappears when FRiP or TSS enrichment is added as a covariate or when quality-matched samples are compared, and if the “lost” peaks are the weakest ones. Biology if specific loci change strongly in both directions, the strong housekeeping promoters are unchanged, and the change reproduces across batches with matched quality.',
+      artifact: 'low-tss-enrichment',
+    },
+    {
+      what: 'scATAC cells called on fragment count alone, or doublets left in',
+      signature: 'A large cluster of barcodes with low TSS enrichment and no cell-type-specific peaks (debris or ambient fragments); clusters that sit between two lineages and carry both lineages’ marker peaks with roughly double the fragment count.',
+      tell: 'Compute or bench if the ambiguous barcodes have low TSS enrichment or doubled fragment counts and vanish with a joint fragment/TSS threshold and a doublet caller (ArchR, scDblFinder, AMULET). Biology (a transitional state) has a normal fragment count, its own peaks, and appears in every replicate at a loading-independent frequency.',
+      artifact: 'cell-calling',
+    },
+  ],
+
+  'chromatin-shearing': [
+    {
+      what: 'Over-sonication: too many cycles, probe heating, or weakly fixed cells',
+      signature: 'Insert-size peak below ~150 bp with a tail into primer-dimer range; weak IP yield and low FRiP in the same samples; broad marks look fragmented into many small peaks.',
+      tell: 'Bench if short inserts and low enrichment move together and follow the sonication batch, with the input from the same chromatin equally short. Biology (a true loss of binding) leaves the insert-size distribution and input unchanged; only the IP signal changes.',
+      artifact: 'insert-size',
+    },
+    {
+      what: 'Under-sonication: compact chromatin left in the pellet and discarded',
+      signature: 'Input coverage drops over heterochromatin, pericentromeric repeats and lamina-associated domains; H3K9me3 or H3K27me3 domains appear narrower and weaker; insert sizes above 600 bp with a smear.',
+      tell: 'Bench if the under-coverage is visible in the input, not just the IP, and the deficit covers the same compact regions in every mark done on that chromatin. Biology (loss of a repressive domain) is mark-specific and the input stays flat over the region.',
+      artifact: 'hyperchipable-regions',
+    },
+    {
+      what: 'Shearing batches differ between conditions, so inputs are not comparable',
+      signature: 'Inputs cluster by preparation date; “differential” regions between conditions coincide with open-chromatin regions that shear more easily and appear in the input difference too.',
+      tell: 'Bench if the same regions differ between the two inputs as between the two IPs, and if calling each IP against its own matched input removes most of them. Biology survives matched-input calling and is specific to the IP, not the input.',
+      artifact: 'batch-effects',
+    },
+    {
+      what: 'MNase over-digestion in native ChIP',
+      signature: 'Only mono-nucleosomes (~147 bp), loss of linker-containing fragments, under-representation of A/T-rich regions where MNase cuts fastest; nucleosome positioning looks sharper than it is.',
+      tell: 'Bench if the input shows the same A/T under-representation and the degree of digestion differs between samples. Biology (nucleosome depletion at active promoters) is present at the same digestion level in all samples and is matched by accessibility data.',
+    },
+  ],
+
+  immunoprecipitation: [
+    {
+      what: 'Antibody cross-reacts with another mark or protein',
+      signature: 'Peak distribution matches a different mark (e.g. an “H3K4me3” set that looks like H3K4me1 enhancers), peaks persist in a knockout or after inhibitor treatment, two antibody lots give different peak sets.',
+      tell: 'Bench if a second validated antibody or a tagged-protein ChIP disagrees, or if peaks remain when the target is absent. Biology if independent antibodies and a knockout control agree and the unusual distribution is reproduced across labs.',
+      artifact: 'antibody-cross-reactivity',
+    },
+    {
+      what: 'Failed IP: antibody does not work in ChIP, epitope masked by fixation, lot change',
+      signature: 'FRiP under 1 %, RSC below 0.8, fingerprint on the input line; the few “peaks” sit at strong promoters and blacklist regions and are shared with IgG.',
+      tell: 'Bench if QC metrics fail while the input is normal and the “peaks” are the universal open-chromatin set. Biology (the factor truly not binding in that condition) is rare and would still give an RSC and fingerprint that differ from input, because background binding and off-target sites persist.',
+      artifact: 'low-frip',
+    },
+    {
+      what: 'Too little chromatin or too stringent washes, so the library is amplified from picograms',
+      signature: 'Duplicate rate above 50 %, `preseq` predicts no gain from deeper sequencing, adapter dimers in the library trace, peak set shrinks with each replicate.',
+      tell: 'Bench if duplication correlates with IP yield and cycle number across samples rather than with condition. Biology never changes library complexity; two conditions with equal yield should have equal complexity whatever their binding differs by.',
+      artifact: 'low-input',
+    },
+    {
+      what: 'Global change in the mark with no spike-in',
+      signature: 'After depth normalisation, treated and control look alike or the treated sample shows apparent gains at remaining sites; western blot shows the mark lost; fold changes cluster around zero with a few paradoxical increases.',
+      tell: 'Bench (analysis design) if a spike-in or an orthogonal measurement (western, mass spectrometry) shows a global shift that depth-normalised tracks do not. Biology if the spike-in fraction is constant across samples and the site-specific changes are reproduced with spike-in scaling.',
+      artifact: 'spike-in-normalisation',
+    },
+    {
+      what: 'Input or IgG omitted, or made from a different chromatin batch',
+      signature: 'Peaks at open promoters, highly expressed genes and satellite repeats in every sample; peak lists from unrelated antibodies overlap heavily; differential regions coincide with input bias.',
+      tell: 'Bench if the same top peaks appear for unrelated targets and in IgG, and disappear when called against a matched input. Biology is target-specific: distinct factors give distinct peak sets with motif enrichment that differs between them.',
+      artifact: 'hyperchipable-regions',
+    },
+  ],
+
+  'tethered-cleavage': [
+    {
+      what: 'Target not reached: antibody poor in situ, too few cells, or digestion too short',
+      signature: 'Very low yield; library dominated by E. coli carry-over (CUT&RUN) or by ATAC-like open-chromatin background (CUT&Tag); FRiP in the single digits where 30–80 % is expected; high duplication.',
+      tell: 'Bench if the E. coli fraction is high, yield is low and the peaks match an accessibility map rather than the expected mark. Biology (truly few sites) still gives a clean, low-background library with high FRiP on the few sites and a normal E. coli fraction.',
+      artifact: 'low-frip',
+    },
+    {
+      what: 'Over-digestion or untethered enzyme: calcium left too long, too much pA/G-MNase or pA-Tn5',
+      signature: 'Peaks appear at all open chromatin regardless of antibody; IgG control shows the same peaks; insert sizes lose the sub-nucleosomal fraction; signal at the expected mark is diluted.',
+      tell: 'Bench if the IgG library has comparable yield and peak set to the target library and both match ATAC-seq. Biology if the IgG is near-empty and target peaks carry the expected motif or mark-specific distribution.',
+      artifact: 'hyperchipable-regions',
+    },
+    {
+      what: 'ChIP-style analysis applied: MACS2 defaults, depth normalisation, ChIP QC thresholds',
+      signature: 'Tens of thousands of weak peaks from a sparse background, or peaks missed because the local lambda is zero; samples with different total yields look globally different; QC flagged as “failed” despite excellent enrichment.',
+      tell: 'Compute, not bench: re-calling with SEACR or MACS2 without local lambda and scaling by E. coli reads changes the result; the FASTQ and insert-size distribution are fine. Biology is the same under both callers at the strong sites.',
+    },
+    {
+      what: 'CUT&Tag used for a transcription factor or a compact-chromatin mark that it captures poorly',
+      signature: 'Peaks only at the strongest sites and at open promoters; a published ChIP-seq for the same factor shows many more sites; signal correlates with accessibility more than with the factor’s motif.',
+      tell: 'Bench (method limitation) if the missing sites are in closed chromatin and the recovered ones follow accessibility. Biology if the reduced site set is confirmed by CUT&RUN or ChIP in the same cells.',
+    },
+    {
+      what: 'Nextera adapter and short fragments not handled in trimming or alignment',
+      signature: 'Adapter content rising from mid-read in 2×50 or longer runs, soft-clipped alignments, loss of the sub-nucleosomal fragments after a minimum-length filter, apparent insertions at read starts.',
+      tell: 'Pipeline, never biology: the clipped sequence is `CTGTCTCTTATACACATCT` and re-trimming with the Nextera adapter recovers the short fraction. Biology does not produce adapter sequence.',
+      artifact: 'adapter-readthrough',
+    },
+  ],
+
+  'enrichment-qc': [
+    {
+      what: 'Blacklist and hyper-ChIPable regions not removed',
+      signature: 'The same few hundred regions top every peak list and every correlation; satellite repeats and centromeric regions with enormous read pile-ups in IP, input and IgG alike.',
+      tell: 'Compute if removing the ENCODE blacklist changes the top peaks and sample correlations; the regions are high in the input as well. Biology is absent from input and IgG and does not consist of satellite and centromere repeats.',
+      artifact: 'hyperchipable-regions',
+    },
+    {
+      what: 'Peak counts compared across samples of different depth or complexity',
+      signature: '“More peaks” in the deeper or less duplicated sample; peak number tracks read count or duplication rate rather than condition; signal at shared peaks is unchanged.',
+      tell: 'Compute if down-sampling to equal usable depth equalises peak numbers and the fold change at a fixed site set is flat. Biology shows a change in signal at specific sites after down-sampling, with motif or pathway coherence.',
+    },
+    {
+      what: 'Depth normalisation applied where the mark changed globally',
+      signature: 'Treated samples show no loss of a mark that an inhibitor is known to remove, or show gains at residual sites; spike-in reads, if present, differ several-fold between conditions.',
+      tell: 'Compute if re-scaling by the spike-in (or by an orthogonal global measurement) reverses the conclusion. Biology if spike-in fractions are equal across conditions and the site-level differences persist under both normalisations.',
+      artifact: 'spike-in-normalisation',
+    },
+    {
+      what: 'Duplicates removed from a saturated point-source library, or kept in a low-complexity one',
+      signature: 'Removing: peak heights plateau at the strongest sites and fold changes compress at the top. Keeping: a few PCR jackpots become sharp spurious peaks with identical read starts.',
+      tell: 'Compute: compare peak signal with and without deduplication; a true saturated peak keeps its shape in paired-end or UMI data, while a jackpot peak collapses to one or two fragment positions. Biology is not decided by a flag.',
+      artifact: 'duplicates',
+    },
+    {
+      what: 'Broad mark analysed with a narrow-peak caller, or the reverse',
+      signature: 'H3K27me3 or H3K36me3 domains fragmented into thousands of tiny peaks with gaps, or TF sites merged into few wide regions; peak counts and FRiP swing wildly with the caller.',
+      tell: 'Compute if switching the caller or mode reconciles the result with the known distribution of the mark. Biology (a domain that really fragments on treatment) is visible in the raw signal track at the same caller setting.',
+      artifact: 'low-frip',
+    },
+  ],
+
+  'rna-immunoprecipitation': [
+    {
+      what: 'No crosslink or mild washes: RNAs re-associate with the protein after lysis',
+      signature: 'A RIP target list dominated by the most abundant transcripts of the cell; enrichment over input small (log₂FC under ~1) and spread over whole transcripts; the same targets appear for unrelated proteins or for IgG with a slightly lower signal.',
+      tell: 'Bench if the ranked target list correlates with expression level (plot IP counts against input counts and look for a diagonal), if IgG pulls down a scaled copy of the same list, and if a knockout or knockdown IP still returns the same RNAs. Biology if targets are enriched after input normalisation regardless of expression level, share a motif or a transcript region, and vanish in the knockout IP.',
+      artifact: 'abundance-driven-targets',
+    },
+    {
+      what: 'RNase over-digestion: fragments too short to map, structured sites destroyed',
+      signature: 'Insert lengths under 20 nt after adapter trimming, multi-mapping rate above ~30 %, a usable-read fraction (unique, non-repeat) in the low single digits, and few reproducible peaks; what remains concentrates in highly expressed single-copy exons.',
+      tell: 'Bench if every library digested with that RNase lot or dose shows the same short-insert histogram and low unique-mapping rate, and a repeat with lower RNase restores insert length. Biology does not shorten footprints below the enzyme’s own dose–response; a protein that genuinely binds short motifs still yields fragments of 20–40 nt in a well-titrated digest.',
+      artifact: 'rnase-overdigestion',
+    },
+    {
+      what: 'Under-digestion: long fragments, poor site resolution, high background',
+      signature: 'Inserts of 100 nt and above, broad peaks that span exons rather than motifs, high fraction of reads outside called peaks, and RNA-seq-like gene-body coverage in what should be a CLIP library.',
+      tell: 'Bench if the fragment-length histogram is broad for every sample of that batch and peak widths follow fragment length, not transcript features. Biology if broad coverage is confined to specific transcripts where the protein coats long regions (some are known to), while other targets still show sharp pile-ups in the same library.',
+    },
+    {
+      what: 'Antibody cross-reacts with another RNA-binding protein, or does not IP at all',
+      signature: 'Two motif families in the peaks, or peaks matching a different protein’s published binding map; alternatively a near-empty IP: library needs 25+ PCR cycles, is mostly adapter dimer, and the few peaks are abundant-RNA background.',
+      tell: 'Bench if the western blot of the IP shows an extra band or no band, if the motif split tracks antibody lot rather than condition, and if a second validated antibody against the same protein gives a different map. Biology if two motifs appear with both antibodies and in a tagged-protein IP, and the dual preference is reproduced in vitro.',
+    },
+    {
+      what: 'No size-matched input or IgG control sequenced',
+      signature: 'Peaks called against nothing or against total RNA-seq: thousands of peaks in rRNA, snRNA, mitochondrial transcripts and housekeeping mRNAs; enrichment values that scale with expression; impossible to separate IP specificity from library bias.',
+      tell: 'Bench or design if the peak set changes dramatically when a matched input is finally used, and if peak scores correlate with gene expression. Biology if peaks survive normalisation to a size-matched input from the same lysate and gel window; without that control, no peak in an abundant transcript is interpretable.',
+      artifact: 'abundance-driven-targets',
+    },
+  ],
+
+  'clip-library': [
+    {
+      what: 'UMI and in-line barcode left on the read, or trimmed from the wrong end',
+      signature: 'Mapping rate collapses or every alignment begins with a soft-clip of exactly the UMI length; peak summits sit 10–20 nt away from the motif; deduplication by UMI is impossible because the UMI is still in the sequence.',
+      tell: 'Pipeline, not biology: the offset equals the UMI-plus-barcode length and disappears when the leading bases are moved into the read name with `umi_tools extract` or `Cutadapt -u`. Biology never shifts every binding site by the same fixed number of bases.',
+      artifact: 'umis',
+    },
+    {
+      what: 'Position-only duplicate removal applied to a truncation library',
+      signature: 'The unique-read count falls to a few percent and the strongest crosslink sites lose nearly all their reads; peak heights flatten so weak and strong sites look alike; replicates lose correlation.',
+      tell: 'Pipeline if `MarkDuplicates` or `samtools markdup` was run without UMIs on a library whose reads are expected to share start positions, and `umi_tools dedup` restores the stacks. Biology produces identical start positions on purpose in CLIP: the pile-up is the crosslink; a stack of reads with different UMIs at one coordinate is signal, not duplication.',
+      artifact: 'duplicates',
+    },
+    {
+      what: 'Too many PCR cycles on a near-empty IP: library is PCR copies and adapter dimers',
+      signature: 'Duplication above ~95 % by UMI, a few thousand unique molecules per sample, adapter-dimer peak dominating the Bioanalyzer trace at ~140–160 bp and a FastQC insert-length spike at zero, GC-rich sequences over-represented.',
+      tell: 'Bench if unique molecules scale with the number of cells and cycle count across samples, dimer fraction tracks the same batch, and a second IP with more cells gives tens of thousands of unique molecules. Biology if a specific protein genuinely binds few RNAs: the molecules are few but reproducible between replicates and concentrated in the same sites, not scattered noise.',
+      artifact: 'low-input',
+    },
+    {
+      what: 'Truncation sites or T→C transitions treated as alignment artefacts',
+      signature: 'Reads with the signature mismatch or deletion at the site filtered out as low quality, or soft-clipped by an aligner with lenient end clipping, so crosslink-site calls move or disappear; PAR-CLIP T→C counts near zero after a mismatch filter.',
+      tell: 'Pipeline if the mismatches or deletions are concentrated one base from read starts or at peak summits and vanish only when mismatch-tolerant settings are used; biology (a real SNP or RNA edit) sits at the same genomic position in input and IgG libraries too and is not enriched at peak summits.',
+      artifact: 'crosslink-truncation',
+    },
+    {
+      what: 'Read-through or RIP-type library sequenced paired-end and analysed as truncation data',
+      signature: 'Read 1 starts spread across whole transcripts with no single-nucleotide stacks; calling crosslink sites from read starts gives thousands of low-confidence one-read sites; peaks resemble exon coverage.',
+      tell: 'Design if the protocol was HITS-CLIP, PAR-CLIP or RIP-seq, where the information is a deletion, T→C or whole-transcript enrichment rather than the read start, and switching the caller to the matching mode produces consistent peaks. Biology does not change the information content of the library; the protocol does.',
+    },
+  ],
+
+  'probe-hybridization': [
+    {
+      what: 'Different probe set or version used across the cohort',
+      signature: 'Whole exons or genes at zero coverage in one batch and normal in another; per-target coverage heatmap splits the cohort into blocks; CNV callers report recurrent “deletions” confined to one batch.',
+      tell: 'Bench if the missing regions coincide with a design difference (compare the two target BEDs) and every sample of a batch shares them. Biology if the loss is in one or a few samples, has read-level breakpoint support, and is not a known design gap.',
+      artifact: 'probe-dropout',
+    },
+    {
+      what: 'Weak adapter or Cot-1 blocking, or too short a hybridisation',
+      signature: 'PCT_SELECTED_BASES well below the vendor’s range (for example 35 % for an exome); off-target reads enriched in Alu and other repeats; mean target coverage low despite normal read counts.',
+      tell: 'Bench if the whole capture pool shows the same low on-target fraction while libraries captured on other days are fine. Biology never changes the on-target fraction; a sample with a genuinely different genome (a different species or a heavy microbial load) also shows an unusual read-level taxonomic profile, not just repeat enrichment.',
+      artifact: 'off-target-reads',
+    },
+    {
+      what: 'Libraries in one capture pool quantified unevenly',
+      signature: 'Two- to ten-fold spread in on-target depth among the libraries of one capture pool, while reads per library before capture were balanced; the lowest libraries show more duplicates.',
+      tell: 'Bench if depth rank order follows the pool’s pre-capture mass estimates and differs from pre-capture read share. Biology does not change the number of molecules a library brings to the tube.',
+      artifact: 'uneven-depth',
+    },
+    {
+      what: 'Cross-talk between libraries that shared a hybridisation tube',
+      signature: 'Low-frequency variants (0.5–3 %) that appear only in samples captured together and match a homozygous or high-titre allele of one of those samples; viral reads at trace level in every member of the pool with one dominant positive.',
+      tell: 'Bench if the shared alleles follow the capture-pool membership rather than the sequencing lane (index hopping) or the extraction batch (contamination). Biology if the minor allele is also present in an independent library of the same sample, or in a sample from a different pool.',
+      artifact: 'index-hopping',
+    },
+    {
+      what: 'Targets more divergent than the probe design tolerates',
+      signature: 'Coverage falls to zero over stretches of a viral genome or of a non-reference gene while flanking regions are deep; reads at the edges of the gap carry many mismatches to the reference.',
+      tell: 'Bench (design) if the uncovered stretch is the most divergent part of the genome in related isolates and the covered part has high depth. Biology (a true deletion) if split reads or discordant pairs bridge the gap and the flanks are at normal depth with few mismatches.',
+      artifact: 'probe-dropout',
+    },
+  ],
+
+  'capture-pulldown': [
+    {
+      what: 'Too many post-capture cycles, or too little library into the hybridisation',
+      signature: 'Percent duplication 50–90 % for an exome; `EstimateLibraryComplexity` far below sequencing depth; deduplicated depth a fraction of raw depth; allele fractions at heterozygous sites spread from 0.2 to 0.8.',
+      tell: 'Bench if duplication scales with input mass and cycle number across samples and the sequencing lane shares nothing else unusual. Biology does not create exact-coordinate duplicates at this rate; a true subclonal allele fraction is reproduced in a second library from the same DNA, whereas jackpot allele fractions are not.',
+      artifact: 'pcr-jackpotting',
+    },
+    {
+      what: 'Washes too stringent (temperature or salt off) for the sample',
+      signature: 'Low coverage specifically over divergent or AT-rich targets while the mean target coverage is normal; viral genomes covered only in conserved regions; on-target fraction high but FOLD_80 poor.',
+      tell: 'Bench if every library washed in that batch loses the same class of targets and the loss is milder in a batch washed on another day. Biology if the loss is sample specific and the uncovered region has evidence of real divergence or deletion in independent data.',
+      artifact: 'probe-dropout',
+    },
+    {
+      what: 'Washes too lax, or bead carry-over of unbound library',
+      signature: 'On-target fraction 20–40 % for an exome with off-target reads spread evenly across the genome; coverage looks like a low-pass WGS plus a weak exome.',
+      tell: 'Bench if the off-target reads are uniform across the genome and the fraction is shared across the capture batch. Biology (contaminating species or very high microbial load) shows up as reads that do not align to the host, not as uniform host coverage.',
+      artifact: 'off-target-reads',
+    },
+    {
+      what: 'Adapter dimers or bait–adapter products survive capture',
+      signature: 'A sharp 120–150 bp peak in the post-capture trace; FastQC adapter content from the first bases of many reads; a few percent of reads with insert length near zero after trimming.',
+      tell: 'Bench, always: dimers have no insert. The fraction varies with input and is highest in the lowest-input libraries of a batch.',
+      artifact: 'adapter-dimers',
+    },
+    {
+      what: 'UMI family sizes too small to build consensus',
+      signature: 'Most UMI families contain one read; fgbio consensus output discards most data; low-frequency calls come from single-read families and show strand bias.',
+      tell: 'Bench or design if the library was under-sequenced relative to its molecule count or the input mass was far above the panel’s capacity. Biology cannot be inferred from single-read families either way; a real low-frequency variant persists after requiring families of three or more reads and both strands.',
+      artifact: 'umis',
+    },
+  ],
+
+  'on-target-metrics': [
+    {
+      what: 'Wrong or differently padded interval file between pipelines or batches',
+      signature: 'Two callers or two batches disagree on hundreds of variants, nearly all within 100 bp of a target edge; PCT_SELECTED_BASES differs between QC reports for the same BAM.',
+      tell: 'Pipeline if the discordant variants sit at target boundaries and vanish when both runs use one BED and one padding. Biology never clusters variants at interval edges.',
+      artifact: 'padding-artefacts',
+    },
+    {
+      what: 'Coverage computed before duplicate marking',
+      signature: 'Reported depth two to five times the deduplicated depth; callable fraction overstated; allele fractions far from 0.5 at sites that look deeply covered.',
+      tell: 'Pipeline if re-running HsMetrics on the duplicate-marked BAM collapses the depth. Biology does not make a 300× site behave like a 60× site.',
+      artifact: 'pcr-jackpotting',
+    },
+    {
+      what: 'CNV called from single-sample depth without a panel of normals',
+      signature: 'Many “deletions” and “duplications” in GC-rich first exons, pseudogene-rich genes and the same genes in every sample; calls track probe GC rather than chromosome segments.',
+      tell: 'Bench (probe efficiency) if the same targets are “deleted” across unrelated samples and the signal disappears against a matched panel of normals. Biology if the call spans several adjacent targets, is unique to one sample, has B-allele-frequency support and survives normalisation.',
+      artifact: 'probe-dropout',
+    },
+    {
+      what: 'Viral absence or partial genome read as low titre',
+      signature: 'A viral genome covered at 60–80 % breadth with high depth on the covered part; or no reads at all for a virus missing from the probe design.',
+      tell: 'Bench (design or divergence) if the uncovered regions are the variable genes in related genomes and the covered part is deep. Biology (low titre) if depth is uniformly low across the whole genome; and a virus absent from the design cannot be called absent from the sample.',
+      artifact: 'probe-dropout',
+    },
+    {
+      what: 'Off-target reads used for genotyping',
+      signature: 'Variants called outside targets at 1–5× depth; genotype concordance with array data drops sharply off target; many singleton calls.',
+      tell: 'Pipeline if the discordant calls are off target and at low depth. Biology is not what a single read at a site tells you.',
+      artifact: 'off-target-reads',
+    },
+  ],
+
+  'tiled-amplicon-pcr': [
+    {
+      what: 'Primer-site mutation in the circulating lineage drops one or more amplicons',
+      signature: 'The same amplicon (e.g. ARTIC V3 amplicon 64 or 72–73) at near-zero depth in every sample of one lineage while its neighbours are fine; consensus has a ~300 nt N run at the same coordinates in all of them.',
+      tell: 'Bench if the gap is at primer coordinates, affects samples of one lineage regardless of their Ct, and the mutation under the primer is visible in the overlapping amplicon’s reads or in other labs’ genomes. Biology (a real deletion) is spanned by reads whose alignment contains the gap, has breakpoints that do not coincide with primer positions, and persists after switching to a scheme version with moved primers.',
+      artifact: 'amplicon-dropout',
+    },
+    {
+      what: 'Low viral load (Ct above ~30): stochastic amplification and template exhaustion',
+      signature: 'Genome completeness falls with Ct; many random amplicons missing per sample; per-amplicon depth imbalance of 100–1,000-fold; duplication near 100 %; primer-dimer peak in the library trace.',
+      tell: 'Bench if the missing amplicons differ from sample to sample, completeness tracks Ct across the batch, and a re-extraction or more input recovers them. Biology does not remove random amplicons; a consistent gap in strong (Ct < 25) samples is a scheme or sequence problem, not load.',
+      artifact: 'low-input',
+    },
+    {
+      what: 'Pool imbalance, degraded primers or an unbalanced primer spike-in',
+      signature: 'Depth alternates amplicon by amplicon: all odd (pool 1) amplicons high, all even low, or one amplicon low in every sample of a batch including strong ones; the pattern changes with a new primer aliquot.',
+      tell: 'Bench if the depth pattern is periodic by pool or constant across unrelated samples and lineages, and tracks the primer lot or the person pipetting. Biology changes coverage only where the sequence changed, in the samples that carry the change.',
+      artifact: 'amplicon-dropout',
+    },
+    {
+      what: 'Cross-contamination from a positive control or a strong sample',
+      signature: 'No-template control yields a partial or full consensus; weak samples carry 1–10 % minor variants that exactly match the positive control’s or a plate neighbour’s mutations; a Ct-37 sample gives a surprisingly complete genome.',
+      tell: 'Bench if the minor alleles reconstruct another sample’s haplotype, the affected wells cluster on the plate, and the signal scales inversely with the sample’s own load. Biology (mixed infection or within-host variation) gives minor alleles that are not a copy of any other sample on the run and are reproduced from a second extraction.',
+      artifact: 'amplicon-cross-contamination',
+    },
+    {
+      what: 'Too many cycles or empty reactions generating chimeras and primer dimers',
+      signature: 'Reads whose two halves map to different amplicons; soft-clipped junctions between non-adjacent genome positions; a ~100 bp peak in the Bioanalyzer trace; apparent structural variants in a low-Ct-free sample.',
+      tell: 'Bench if the junctions join primer positions, differ from read to read and are concentrated in high-Ct samples. Biology (a real recombinant or deletion) gives one consistent breakpoint, away from primer coordinates, supported at high frequency in a strong sample.',
+      artifact: 'chimeras',
+    },
+  ],
+
+  'amplicon-consensus': [
+    {
+      what: 'Primers not trimmed, or trimmed with the wrong scheme version’s BED',
+      signature: 'Variant allele frequencies that are diluted to 40–70 % exactly at sites under a primer; mutations known for the lineage absent from the consensus at primer coordinates; or, with the wrong BED, genuine sequence clipped and depth collapsing at the old primer positions.',
+      tell: 'Pipeline if the odd frequencies or missing calls sit inside primer intervals of the scheme actually used and disappear after re-trimming with the right BED. Biology gives consistent frequencies across the whole amplicon and across the overlapping amplicon from the other pool.',
+      artifact: 'primer-site-variants',
+    },
+    {
+      what: 'Depth mask or consensus threshold set differently between batches',
+      signature: 'Completeness jumps between batches run with different pipelines; the same FASTQ gives different numbers of N and different ambiguous bases (IUPAC codes vs majority calls); lineage confidence changes without any new data.',
+      tell: 'Pipeline if re-running all samples through one pipeline with one mask removes the batch difference. Biology never follows the version in the pipeline log.',
+    },
+    {
+      what: 'Duplicate marking applied to amplicon data',
+      signature: 'Depth collapses to roughly one read pair per amplicon per strand; coverage of a few hundred per amplicon becomes single digits; consensus turns to N almost everywhere while the raw FASTQ is large.',
+      tell: 'Pipeline, always: amplicon reads share both ends by design, and depth returns when `MarkDuplicates` or `samtools markdup` is removed from the workflow. Biology cannot make a strong sample look like a 2× genome.',
+      artifact: 'duplicates',
+    },
+    {
+      what: 'Minor variants called below the method’s floor and read as within-host diversity',
+      signature: 'Dozens of 1–5 % variants per sample, enriched near amplicon ends and at homopolymers, with strong strand bias; the set differs between technical replicates of the same extract.',
+      tell: 'Bench or pipeline if the low-frequency calls are not shared between replicate libraries, concentrate at read ends or primer boundaries, and shrink with a stricter quality filter. Biology (mixed infection, intra-host evolution) gives a small set of minor alleles reproduced in replicates, spread across amplicons, often in linkage with each other and at frequencies well above the floor.',
+    },
+    {
+      what: 'Index hopping or low-level demultiplexing bleed between samples on a patterned flow cell',
+      signature: 'Minor variants at 0.1–2 % in many samples that each match a different high-load sample on the same lane; negative controls with a few thousand reads forming a faint consensus of the lane’s dominant genome.',
+      tell: 'Bench if the minor alleles are a copy of another library’s consensus and their frequency scales with that library’s share of the lane; unique dual indexes remove them. Biology gives minor alleles that match no other sample on the run.',
+      artifact: 'index-hopping',
+    },
+  ],
 };

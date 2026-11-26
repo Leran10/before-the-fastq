@@ -1531,6 +1531,602 @@ export const steps = {
     ],
     artifacts: ['invalid-pairs', 'chimeric-pairs', 'trans-noise', 'site-bias', 'duplicates'],
   },
+
+  // ───────────────────────── atac, chip, rip, capture, amplicon (added 2026-11-26) ─────────────────────────
+  'nuclei-isolation': {
+    title: 'Nuclei isolation for ATAC',
+    short: 'Cells are counted, checked for viability and gently lysed so that intact nuclei, stripped of cytoplasm and mitochondria, go into the transposition. The quality of this suspension sets background, mitochondrial fraction and library complexity.',
+    inputs: 'Fresh, cryopreserved or FACS-sorted cells (typically 50,000 viable cells), or minced frozen tissue',
+    outputs: 'A pellet of intact nuclei, free of cytoplasm and most mitochondria, counted and on ice',
+    bench: [
+      'Viable cells are counted (trypan blue or an automated counter) and a fixed number, typically 50,000, is pelleted and resuspended in a cold lysis buffer. In Omni-ATAC the buffer contains three mild detergents at low concentration: NP-40 and Tween-20 open the plasma membrane and digitonin permeabilises cholesterol-rich membranes, including mitochondrial ones. After about three minutes on ice the lysis is quenched with a Tween-only wash buffer, which strips away cytoplasm and mitochondria while leaving nuclear membranes intact. The original 2013 protocol used NP-40 alone, left mitochondria in place and produced libraries in which a fifth to a half of the reads were mitochondrial; the digitonin wash is what brought that below ~10 %.',
+      'The nuclei must be intact, single and alive at the time of lysis. Dead or dying cells have fragmented, de-condensed chromatin that Tn5 cuts everywhere, so each dead cell contributes background rather than signal; viability above ~90 % is the usual requirement, and FACS sorting of live cells is common for mixed or stressed samples. Frozen tissue is dounced in the lysis buffer and filtered; cryopreserved cells in DMSO recover well, whereas flash-frozen cell pellets, whose membranes burst on thawing, generally do not. Cell number matters more than in most preps because it is also the enzyme-to-substrate ratio of the next step: counting debris as cells under-loads Tn5 and over-cycles the PCR.',
+      'For single-cell ATAC (10x Chromium) the same lysis produces a nuclei suspension that is filtered, counted and bulk-transposed before the droplet partitioning, so nuclei quality, clumping and debris carry straight into per-cell metrics.',
+    ],
+    variants: [
+      { name: 'Omni-ATAC (Corces 2017)', text: 'NP-40 + Tween-20 + digitonin lysis with a Tween wash; low mitochondrial fraction; works on frozen tissue. The current default for bulk.' },
+      { name: 'Standard ATAC (Buenrostro 2013)', text: 'NP-40 lysis only, no wash. Mitochondrial reads typically 20–50 %; still seen in older datasets.' },
+      { name: 'Fast-ATAC', text: 'Digitonin added directly to the transposition for blood cells; no separate lysis step.' },
+      {
+        name: 'Nuclei from frozen tissue / snATAC',
+        text: 'Dounce homogenisation, filtering (30–40 µm), often a sucrose or iodixanol gradient to remove debris; nuclei are counted before 10x loading.',
+      },
+    ],
+    data: [
+      'Mitochondrial read fraction is a property of this step. chrM has no nucleosomes and is hyper-accessible, so any mitochondria left in the suspension contribute reads in proportion to their number, from under 5 % (Omni-ATAC) to 50 % (no wash).',
+      'Dead cells and lysed nuclei give a flat, genome-wide background: low fraction of reads in peaks, low TSS enrichment and a fragment-size distribution without the nucleosome ladder, with no change in read count or quality scores.',
+      'Library complexity is set by the number of nuclei that were actually intact: a count that was inflated by debris means fewer templates, more PCR cycles and a higher duplicate rate.',
+      'Clumped nuclei in scATAC become doublets and “cells” with unusually many fragments; debris becomes barcodes with few fragments and low TSS enrichment.',
+    ],
+    check: [
+      'Per-sample chrM fraction (`samtools idxstats`) alongside the protocol version; the two should agree.',
+      'Fragment-size histogram and TSS enrichment per sample, plotted against recorded viability and cell count.',
+      'scATAC: per-barcode TSS enrichment vs fragment count (the knee plot of ATAC), nucleosome signal, and doublet scores.',
+    ],
+    ask: [
+      'Fresh, cryopreserved or frozen? Viability at the time of lysis and how it was measured?',
+      'Which lysis buffer (digitonin or not) and how many nuclei went into transposition?',
+      'Were the nuclei counted after lysis or was the cell count before lysis assumed?',
+    ],
+    artifacts: ['mito-reads', 'low-tss-enrichment', 'nucleosome-ladder', 'low-input', 'batch-effects'],
+  },
+
+  'chromatin-tagmentation': {
+    title: 'Tn5 on native chromatin',
+    short: 'Tn5 transposase loaded with sequencing adapters is let loose on intact nuclei. It can only insert where DNA is not wrapped in nucleosomes or covered by proteins, so the places it cuts are the accessible genome.',
+    inputs: 'Intact nuclei (typically 50,000) in transposition buffer',
+    outputs: 'Adapter-tagged fragments from accessible chromatin, nucleosome-free and nucleosome-spanning, purified immediately',
+    bench: [
+      'The nuclei are resuspended in a transposition mix containing Tn5 transposomes (Illumina TDE1 or a home-made, adapter-loaded Tn5), magnesium, and in Omni-ATAC a little digitonin and Tween, and incubated for about 30 minutes at 37 °C with shaking. The enzyme is the same one used for Nextera libraries (see the tagmentation step), but the substrate is chromatin instead of purified DNA. Tn5 is bulky and inserts only where it can reach the double helix: nucleosome-free regions at promoters, enhancers and insulators are cut repeatedly, linker DNA between nucleosomes is cut occasionally, and compacted heterochromatin is almost never cut. Each insertion event ligates an adapter to the 5′ end on each strand, and a fragment becomes sequenceable when two insertions with different adapters (one P5-side, one P7-side) occur close enough together, which happens for about half of the fragments.',
+      'Two things about the enzyme shape the data. First, Tn5 works as a dimer that cuts the two strands 9 bp apart, so the two adapters flank a 9 bp duplicated stretch; the true centre of the insertion is 4–5 bp inside each read start, which is why aligned reads are shifted +4 on the forward strand and −5 on the reverse before any base-resolution analysis. Second, the ratio of enzyme to nuclei and the incubation time set the fragment-size distribution: fragments shorter than ~100 bp come from nucleosome-free DNA, fragments of roughly 180–250 bp and 350–450 bp span one or two nucleosomes, producing the ladder seen on a Bioanalyzer trace. Too much enzyme or time collapses the ladder towards short fragments and raises the background; too little leaves large fragments and low yield. Tn5 also has a weak insertion-sequence preference that imprints the first ~9 bases of every read and can look like a transcription-factor footprint.',
+      'The reaction is stopped by immediately binding the DNA on a clean-up column (DNA Clean & Concentrator) or adding SDS and proteinase K; Tn5 stays bound to its products until a detergent removes it, so a delayed stop keeps changing the fragment distribution. The fragments are not yet sequenceable: the 9 bp gaps are filled and the full P5/P7 adapters with indexes are added in the first cycles of the PCR that follows.',
+    ],
+    variants: [
+      { name: 'Omni-ATAC transposition', text: 'Tn5 in a buffer with 0.01 % digitonin and 0.1 % Tween-20, 30 min at 37 °C with mixing; low mitochondrial fraction.' },
+      {
+        name: 'Commercial vs home-made Tn5',
+        text: 'Illumina TDE1 is consistent but costly; purified pA-Tn5 or Diagenode Tn5 are common in academic labs and vary by batch, so batches should be recorded.',
+      },
+      { name: 'scATAC (10x Chromium)', text: 'Bulk transposition of all nuclei first; the barcode is added later in the droplet by a gel-bead oligo that primes the Tn5 adapter.' },
+      {
+        name: 'Alternatives',
+        text: 'DNase-seq and MNase-seq ask related questions with different enzymes and different biases; CUT&Tag uses tethered Tn5 for a specific protein instead of open chromatin.',
+      },
+    ],
+    data: [
+      'Reads start exactly at Tn5 cut sites. A +4/−5 shift is needed for footprinting and cut-site analyses, and the first ~9 bases of every read carry a Tn5 composition bias (FastQC per-base content warning, expected).',
+      'The fragment-size distribution shows a nucleosome-free peak under ~100 bp and periodic peaks at ~200, ~400 bp; its shape is a direct readout of transposition conditions and nuclei quality, and nucleosome-free vs mono-nucleosomal fragments can be analysed separately.',
+      'The adapter to trim is the Nextera transposase sequence `CTGTCTCTTATACACATCT`. With 2×50 bp reads few inserts are shorter than the read, but nucleosome-free fragments under 50 bp read into adapter.',
+      'Signal-to-noise (FRiP, TSS enrichment) is largely decided here, by the enzyme-to-nuclei ratio and by how much chromatin from dead cells was present. Later steps cannot add signal; they can only lose it.',
+      'Batch effects follow Tn5 lot and transposition conditions: samples transposed on different days with different enzyme batches separate in PCA on fragment-size and TSS metrics before any biology does.',
+    ],
+    check: [
+      'Fragment-size histogram per sample (`ATACseqQC`, `ataqv`, deepTools `bamPEFragmentSize`): ladder present, nucleosome-free peak dominant.',
+      'TSS enrichment score and FRiP per sample next to Tn5 batch and transposition date in the manifest.',
+      'FastQC per-base content for the first 9 bases: the Tn5 skew should look the same in every sample; a sample that differs was treated differently.',
+    ],
+    ask: [
+      'Which Tn5 (TDE1, home-made, which batch), how much per reaction, and for how long?',
+      'Was the reaction stopped by immediate clean-up or left on the bench?',
+      'How many nuclei actually went in, and were all samples transposed in one batch?',
+    ],
+    artifacts: [
+      'nucleosome-ladder',
+      'tn5-shift',
+      'low-tss-enrichment',
+      'end-bias',
+      'insert-size',
+      'adapter-readthrough',
+      'gc-bias',
+      'batch-effects',
+    ],
+  },
+
+  'atac-fragments': {
+    title: 'From reads to accessible regions',
+    short: 'Mitochondrial reads and duplicates are removed, cut sites are shifted to the true Tn5 centre, fragment sizes and TSS enrichment are checked, and peaks are called on cut sites rather than on fragments. Every accessibility result inherits these decisions.',
+    inputs: 'Paired FASTQ, typically 2×50 bp, Nextera adapters',
+    outputs: 'Filtered, shifted fragment or BAM files; peak sets; count matrix of fragments in peaks; QC metrics (TSS enrichment, FRiP, fragment-size profile)',
+    bench: [
+      'Computational, but it defines what “accessible” means. After adapter trimming and alignment (Bowtie2 or BWA, with a large maximum insert so that di- and tri-nucleosomal fragments stay properly paired), three filters remove most of the reads: mitochondrial alignments, which can be a tenth to a half of the data; duplicates, which are both real PCR duplicates from a low-input, over-cycled library and identical fragments from hyper-accessible hotspots, and are removed by convention because the two cannot be told apart without UMIs; and low-MAPQ and blacklisted regions (ENCODE blacklist v2), which otherwise produce the strongest “peaks” in the genome. Read starts are then shifted +4 on the forward and −5 on the reverse strand so that each represents the centre of a Tn5 insertion.',
+      'Quality is judged on the filtered fragments: a fragment-size distribution with a dominant nucleosome-free peak and visible nucleosome periodicity, a TSS enrichment score (ENCODE: below 5 concerning, 5–7 acceptable, above 7 ideal for hg38 RefSeq TSSs), the fraction of fragments in peaks (FRiP; typically 0.2–0.5, higher is better), and library complexity (NRF, PBC1, PBC2). Peaks are then called on cut sites, not on fragments: MACS2 with `--nomodel --shift -75 --extsize 150` (or `-f BAMPE` on fragments), Genrich in ATAC mode, or HMMRATAC, which uses the nucleosome structure directly. For comparisons across samples a consensus peak set is built, fragments are counted per peak, and differential accessibility is tested with the RNA-seq toolkit (DESeq2, edgeR, limma), ideally with FRiP or TSS enrichment checked as a covariate.',
+      'For scATAC the same filters are applied per barcode to produce `fragments.tsv.gz`; cells are called on fragment count and TSS enrichment together, doublets are removed, and peaks or tiles become a sparse cells × regions matrix (ArchR, Signac, SnapATAC2). Each cell has only one or two copies of each locus, so the matrix is near-binary and far sparser than a gene-expression matrix.',
+    ],
+    variants: [
+      { name: 'ENCODE ATAC-seq pipeline', text: 'The reference implementation with the standard QC thresholds, IDR between replicates and pseudo-replicates.' },
+      { name: 'nf-core/atacseq', text: 'Nextflow pipeline with MACS2, consensus peaks, featureCounts and DESeq2 built in.' },
+      {
+        name: 'Genrich / HMMRATAC',
+        text: 'Peak callers written for ATAC: Genrich handles replicates and mitochondrial exclusion natively; HMMRATAC models nucleosome-free vs nucleosomal fragments.',
+      },
+      { name: 'Footprinting (TOBIAS, HINT-ATAC)', text: 'Base-resolution analysis of cut sites around motifs; requires the shift and a Tn5 bias correction.' },
+    ],
+    data: [
+      'Read 1 and Read 2 are the two Tn5 insertion sites; the fragment between them is what was accessible. Analyses work on fragments or cut sites, not on reads.',
+      'Duplication of 20–50 % is normal and is removed by convention, which also deletes genuine identical fragments at the most accessible promoters and flattens the strongest peaks.',
+      'Peak sets depend strongly on depth and on the caller: more reads give more peaks, so differential accessibility between samples of different depth or quality is biased unless a consensus set and a covariate are used.',
+      'TSS enrichment and FRiP are sample-quality metrics; they differ between cell types too, so one fixed threshold across a mixed experiment removes whole cell types.',
+      'scATAC counts are near-binary per cell; clustering uses term-frequency transforms (TF-IDF, LSI) rather than log-normalisation, and gene activity is only a proxy derived from nearby accessibility.',
+    ],
+    check: [
+      'Per-sample QC table: chrM fraction, duplicate rate, NRF/PBC, fragment-size profile, TSS enrichment, FRiP, peaks called; look for samples that are outliers on quality before interpreting them as biology.',
+      'Whether the Tn5 shift was applied (`ATACseqQC`, `alignmentSieve --ATACshift`); whether peaks were called in paired-end or shift/extend mode; whether blacklist filtering was applied.',
+      'Replicate concordance (IDR or overlap of peak sets) and PCA of fragments-in-peaks coloured by batch and by FRiP.',
+    ],
+    ask: [
+      'Which pipeline and peak caller, with which parameters? Was a consensus peak set used for comparisons?',
+      'Were mitochondrial reads and duplicates removed before peak calling and before the QC metrics were computed?',
+      'For scATAC: how were cells called (which fragment and TSS thresholds) and were doublets removed?',
+    ],
+    artifacts: ['tn5-shift', 'mito-reads', 'low-tss-enrichment', 'nucleosome-ladder', 'duplicates'],
+  },
+
+  'chromatin-shearing': {
+    title: 'Chromatin shearing',
+    short: 'Fixed cells are lysed and the chromatin is broken into 200–700 bp pieces by sonication, or cut between nucleosomes by MNase. The fragment size set here is the resolution of every peak, and open chromatin shears first.',
+    inputs: 'Fixed (or native) cells or nuclei, typically 1–20 million for a TF ChIP, fewer for histone marks',
+    outputs: 'Soluble chromatin fragments of 200–700 bp (sonication) or mono- to tri-nucleosomes (MNase), with proteins still attached',
+    bench: [
+      'After fixation and quenching, cells are lysed in detergent, nuclei are collected and resuspended in a lysis buffer with SDS, and the chromatin is sheared. Sonication (Covaris focused ultrasound, Bioruptor water bath, probe sonicator) breaks DNA by shear force; the operator tunes cycles and power per cell type until a smear of 200–700 bp appears on a gel. Shearing efficiency depends on fixation strength, cell number, cell type and buffer; the same program gives different sizes on different days, which is why a pilot shear check is done before every IP. Over-sonication heats the sample, denatures the epitope the antibody needs and pushes fragments below 150 bp; under-sonication leaves large insoluble chromatin in the pellet, which is removed by centrifugation and silently lost from the experiment, together with the regions that are hardest to shear.',
+      'Native ChIP skips fixation and uses micrococcal nuclease (MNase), which digests linker DNA and leaves nucleosome-protected DNA of ~147 bp and multiples. It gives nucleosome-resolution maps of histone marks but cannot hold a transcription factor on DNA without crosslinking, and MNase has its own sequence preference (it cuts A/T-rich linkers first).',
+      'Shearing is not uniform across the genome. Open, active chromatin fragments more readily and ends up over-represented in the soluble fraction; compact heterochromatin resists and is under-represented. The input sample is sheared chromatin without an antibody step, and it already carries this bias, which is why peaks are called against input rather than against a flat genome.',
+    ],
+    variants: [
+      { name: 'Covaris focused ultrasound', text: 'Reproducible, tunable, temperature-controlled; the standard for TF ChIP. Programs are cell-type-specific.' },
+      { name: 'Bioruptor / probe sonicator', text: 'Cheaper, more variable; probe sonication heats and foams, and over-sonication is common.' },
+      {
+        name: 'MNase digestion (native ChIP)',
+        text: 'Nucleosome ladder instead of a smear; used for histone marks on unfixed chromatin and for high-resolution nucleosome maps. Degree of digestion (mono- vs oligo-nucleosomes) is a batch variable.',
+      },
+      { name: 'Enzymatic shearing kits', text: 'MNase-based kits for fixed chromatin (e.g. SimpleChIP); gentler on epitopes but biased toward accessible regions.' },
+    ],
+    data: [
+      'Fragment size sets peak resolution: 200–300 bp fragments give sharp TF peaks; 500–700 bp fragments give broad shoulders and merge neighbouring sites.',
+      'Shearing bias produces input signal that is not flat: open promoters, highly transcribed genes and some repeats are over-represented before any antibody is added. Peaks called without an input control inherit it.',
+      'Under-sonicated samples lose compact chromatin: coverage over heterochromatin and lamina-associated domains drops in input and IP alike, and broad repressive marks (H3K9me3, H3K27me3) look weaker than they are.',
+      'Over-sonicated samples give short, often sub-nucleosomal fragments and weak IPs because epitopes are destroyed; the insert-size histogram and the IP yield both shift together.',
+      'Different shearing batches produce different input profiles; comparing IPs across batches without matched inputs produces batch-shaped “differential” regions.',
+    ],
+    check: [
+      'Insert-size distribution per sample (Picard `CollectInsertSizeMetrics` for paired-end; cross-correlation fragment length for single-end) and whether it groups by shearing batch.',
+      'Input coverage over a few housekeeping promoters versus gene deserts: a 2–5× difference is normal shearing bias; a 20× difference means the input is already “peaky”.',
+      'Coverage over heterochromatin (e.g. pericentromeric regions, LADs) in the input: strong under-coverage suggests chromatin lost in the pellet.',
+    ],
+    ask: [
+      'Sonication instrument, program and whether it was re-optimised for each cell type and batch? Was a shear check gel run before the IP?',
+      'Sonication or MNase? If MNase, how far was it digested (mostly mono-nucleosomes or a ladder)?',
+      'Was an input taken from the same sheared chromatin as each IP?',
+    ],
+    artifacts: ['hyperchipable-regions', 'insert-size', 'batch-effects', 'degradation'],
+  },
+
+  immunoprecipitation: {
+    title: 'Immunoprecipitation',
+    short: 'An antibody is used to pull the protein of interest, and the DNA crosslinked to it, out of the sheared chromatin. The antibody decides what the experiment measures; the yield decides how many PCR cycles and duplicates follow.',
+    inputs: 'Sheared chromatin from 1–20 million cells; 1–10 µg of antibody; protein A/G beads; optionally spike-in chromatin',
+    outputs: 'A few picograms to nanograms of purified, de-crosslinked DNA enriched for bound sites, plus an input and often an IgG control',
+    bench: [
+      'A portion of the sheared chromatin (typically 1–10 %) is set aside as the input. The rest is incubated overnight with an antibody against the target protein or histone modification, then with protein A or G magnetic beads that bind the antibody. The beads are washed with buffers of increasing salt and detergent to remove chromatin that stuck non-specifically, then the complexes are eluted, crosslinks are reversed by heating at 65 °C for several hours, and proteins and RNA are digested before the DNA is purified. A parallel IP with non-specific IgG, or a mock IP without antibody, estimates how much DNA comes down regardless of the target.',
+      'Everything depends on the antibody. Polyclonal antibodies vary by lot and animal; monoclonals are consistent but may recognise a single epitope that fixation masks. Many commercial antibodies cross-react with related histone modifications (H3K4me2 vs me3, H3K27me3 vs H3K9me3) or with unrelated proteins, and some do not work in ChIP at all. ENCODE requires each antibody lot to pass characterisation (western blot or immunofluorescence plus a secondary test such as knockdown, mass spectrometry or a second independent antibody) before data are accepted. A failed or wrong antibody still produces a library and a peak list.',
+      'The yield of a TF ChIP is often under a nanogram, sometimes picograms, so the library is amplified for 10–18 cycles and is low-complexity by construction. When a treatment changes the total amount of a mark genome-wide (an inhibitor, a histone methyltransferase knockout), ordinary normalisation to read depth hides the change; a fixed amount of chromatin from another species (Drosophila S2 cells, pulled down with an H2Av antibody, or spike-in nucleosomes) is added to every sample so that the foreign reads can serve as a scaling factor.',
+    ],
+    variants: [
+      { name: 'Standard crosslinked ChIP (X-ChIP)', text: 'Formaldehyde fixation, sonication, antibody, protein A/G beads. TFs and histone marks.' },
+      { name: 'Native ChIP (N-ChIP)', text: 'No fixation, MNase-digested chromatin; histone marks only; higher efficiency, nucleosome resolution.' },
+      {
+        name: 'Spike-in normalised ChIP (ChIP-Rx)',
+        text: 'Drosophila chromatin plus H2Av antibody added at a fixed ratio; reads aligned to the dm6 genome give the per-sample scaling factor.',
+      },
+      { name: 'Tagged-protein ChIP (FLAG, HA, GFP)', text: 'Avoids antibody problems but requires a tagged construct; over-expression changes binding.' },
+      { name: 'Low-input / carrier ChIP, ChIPmentation', text: 'Tn5 tagmentation of bead-bound chromatin instead of ligation; fewer losses, Nextera adapters in the reads.' },
+    ],
+    data: [
+      'The peak set is the antibody’s specificity, not the protein’s biology: a cross-reacting antibody produces peaks that follow a different mark’s distribution, and a non-functional one produces input-like “peaks” at open chromatin.',
+      'Low yield drives high PCR duplication (20–60 % is common for TF ChIP) and a library complexity that caps the useful depth; `preseq` saturates early.',
+      'Fraction of reads in peaks (FRiP) is the single most informative number: ENCODE expects > 1 % for TFs (good TF ChIPs reach 5–30 %) and higher for point-source histone marks; broad marks spread signal and have lower FRiP by nature.',
+      'Without a spike-in, a global loss or gain of a histone mark is invisible after depth normalisation and may even appear as the opposite: when the mark is lost almost everywhere, the few remaining sites look “up”.',
+      'Input and IgG controls show the shearing and sequence bias of the genome in this sample; peaks also present in input or IgG are not binding.',
+    ],
+    check: [
+      'FRiP, NSC/RSC and the deepTools `plotFingerprint` curve per sample; an IP whose fingerprint lies on the input curve did not enrich.',
+      'Duplication rate versus IP yield and PCR cycles across samples; `preseq lc_extrap` for complexity.',
+      'If a spike-in was used, the fraction of reads aligning to the spike-in genome per sample; it should be roughly constant across conditions unless the target mark changed globally.',
+    ],
+    ask: [
+      'Which antibody (vendor, catalogue number, lot), and what validation exists for it in ChIP for this organism? Same lot for all samples?',
+      'How much DNA came out of each IP and how many PCR cycles were used? Was an input and/or IgG made from the same chromatin?',
+      'Was a spike-in added, and could the treatment change the total amount of the target genome-wide?',
+    ],
+    artifacts: [
+      'antibody-cross-reactivity',
+      'low-frip',
+      'spike-in-normalisation',
+      'hyperchipable-regions',
+      'duplicates',
+      'low-input',
+    ],
+  },
+
+  'tethered-cleavage': {
+    title: 'Tethered cleavage: CUT&RUN and CUT&Tag',
+    short: 'Instead of shearing everything and fishing out the target, an antibody tethers a nuclease (CUT&RUN) or a transposase (CUT&Tag) to the target inside intact cells, and only the DNA next to it is cut and released. Very low background, very low input, and different QC expectations.',
+    inputs: '5 000 to 500 000 unfixed or lightly fixed cells or nuclei bound to concanavalin A beads; antibody; pA/G-MNase or pA-Tn5',
+    outputs: 'CUT&RUN: short DNA fragments released into the supernatant, ready for ligation-based library prep. CUT&Tag: fragments already carrying adapters, ready for PCR',
+    bench: [
+      'Cells are bound to concanavalin A-coated magnetic beads, permeabilised with digitonin and incubated with the primary antibody, which binds its target in situ. In CUT&RUN, a fusion of protein A/G with micrococcal nuclease is added; it binds the antibody and sits inactive until calcium is added at 0 °C, when it cuts the DNA on either side of the target for a few minutes before chelation stops it. The cut fragments diffuse out of the nuclei into the supernatant while the rest of the genome stays inside, so what is sequenced is almost entirely target-adjacent DNA. The E. coli DNA that co-purifies with the pA/G-MNase preparation is present in every reaction at a fixed amount and serves as a built-in spike-in.',
+      'CUT&Tag replaces the nuclease with a protein A–Tn5 fusion loaded with sequencing adapters. Activated with magnesium, Tn5 inserts adapters on both sides of the target, so the DNA comes out of the cell already tagmented; after reversing permeabilisation and a protein digest, the only library step is PCR (typically 12–16 cycles). Because Tn5 prefers open chromatin, CUT&Tag works very well for active marks and for H3K27me3 but can be weak for many transcription factors and for marks in compact chromatin; untethered Tn5 also produces a low-level ATAC-like background at open regions.',
+      'Both methods need far fewer cells (down to single cells) and far fewer reads (3–10 million is often enough) than ChIP, because the background is so low. That same property changes the controls: an IgG CUT&RUN yields very little DNA and its library is dominated by E. coli carry-over and open-chromatin background, and peak callers tuned to ChIP’s uniform background (MACS2 with default settings) behave differently; SEACR was written for this signal shape. Fragment sizes carry information: sub-nucleosomal fragments (< 120 bp) come from TF sites, nucleosomal fragments (150–300 bp) from flanking nucleosomes.',
+    ],
+    variants: [
+      { name: 'CUT&RUN (pA/G-MNase)', text: 'Ligation-based library afterwards; works for TFs and histone marks; E. coli spike-in built in.' },
+      { name: 'CUT&Tag (pA-Tn5)', text: 'Library made in situ; best for histone marks; Nextera adapters in the reads; 2×50 is sufficient.' },
+      { name: 'CUTAC / ATAC-like variants', text: 'Deliberately exploit untethered Tn5 at open chromatin; interpret as accessibility, not binding.' },
+      { name: 'Single-cell CUT&Tag, multimodal (nano-CT, Paired-Tag)', text: 'Combinatorial barcoding; sparse per-cell signal, same bulk failure modes.' },
+    ],
+    data: [
+      'Background is near zero: most reads fall in or near peaks, FRiP of 30–80 % is normal, and a few million reads suffice. A CUT&RUN library with ChIP-like 1–5 % FRiP is a failed experiment, not a “noisy” one.',
+      'Fragment length is informative: a bimodal insert distribution with a sub-nucleosomal peak (< 120 bp) and a mono-nucleosomal peak (~150–200 bp) is expected; TF binding footprints come from the short fraction. Paired-end sequencing is needed to use this.',
+      'A sizeable fraction of reads may align to E. coli (CUT&RUN) or to nothing; the E. coli fraction rises when the target is scarce and can be used for scaling across samples.',
+      'CUT&Tag reads start with the Tn5 adapter context; trim `CTGTCTCTTATACACATCT`, not the TruSeq sequence. Duplicates are common at the low input used; remove them unless the target is a point source saturated by depth.',
+      'Open-chromatin background from untethered Tn5 means that peaks at strong promoters and enhancers can appear for any antibody, including IgG; compare peak sets against an ATAC-seq or IgG CUT&Tag track.',
+    ],
+    check: [
+      'Insert-size histogram (paired-end): bimodal with a sub-nucleosomal peak for TFs; a single broad 300–500 bp peak suggests non-specific cleavage or over-digestion.',
+      'Fraction of reads aligning to E. coli (CUT&RUN) per sample; FRiP with SEACR or MACS2 peaks; comparison of IgG peaks with the target’s peaks.',
+      'Total yield and PCR cycle count per sample; CUT&Tag libraries with > 20 cycles are usually low complexity.',
+    ],
+    ask: [
+      'CUT&RUN or CUT&Tag, which pA/G-enzyme lot, how many cells, and how long was the digestion or tagmentation?',
+      'Was an IgG control run alongside, and was the sequencing paired-end?',
+      'How was normalisation done: depth, E. coli spike-in, or an added spike-in?',
+    ],
+    artifacts: ['low-frip', 'hyperchipable-regions', 'spike-in-normalisation', 'adapter-readthrough', 'duplicates', 'low-input'],
+  },
+
+  'enrichment-qc': {
+    title: 'From reads to peaks',
+    short: 'Computational, but it defines what a “binding site” is. Reads are aligned, duplicates and blacklisted regions removed, enrichment is measured against input, and peaks are called and reconciled across replicates. Each setting changes which sites exist.',
+    inputs: 'FASTQ for IP, input and/or IgG, and any spike-in genome',
+    outputs: 'Filtered BAMs, signal tracks (bigWig), peak sets (narrowPeak / broadPeak), QC tables (FRiP, NSC/RSC, IDR)',
+    bench: [
+      'Computational, but it determines the result. Reads are aligned (bowtie2 or bwa), low-MAPQ and multi-mapping reads are dropped, and duplicates are marked. Removing duplicates is the default and is right for most libraries, but at a strongly enriched point source with deep sequencing, identical fragments arise legitimately and removal caps the peak height; paired-end data and UMIs resolve this. Reads in the ENCODE blacklist (centromeres, satellite repeats, a few hundred regions that are high in every experiment regardless of antibody) are removed because they otherwise dominate peak lists and correlations.',
+      'For single-end data the fragment length is estimated by cross-correlation between strands; the strand shift at which the correlation peaks is the fragment length, and its height relative to the background and to the read-length “phantom peak” gives NSC and RSC. A library with RSC below ~0.8 did not enrich. The deepTools fingerprint plot shows how concentrated the reads are: an input is a near-diagonal line, a good TF ChIP has a steep rise at the end, and an IP that follows the input line is indistinguishable from it.',
+      'Peaks are called against the matched input (MACS2 for sharp TF peaks, broad mode or SICER/epic2 for broad histone domains, SEACR for CUT&RUN’s sparse background). Replicates are reconciled by IDR or by requiring overlap. Signal is then normalised: per million reads by default, or by spike-in scaling factors when the total amount of the mark may differ between conditions. Differential binding on depth-normalised data assumes that most sites do not change; when the treatment removes the mark globally, that assumption fails silently.',
+    ],
+    variants: [
+      { name: 'ENCODE ChIP-seq pipeline', text: 'Standardised QC (NSC/RSC, FRiP, IDR) and thresholds; a good default reference for what “passing” means.' },
+      { name: 'MACS2 narrow / broad', text: 'Local Poisson model against input; broad mode merges nearby enriched regions for histone domains.' },
+      { name: 'SEACR / GoPeaks for CUT&RUN and CUT&Tag', text: 'Threshold on signal relative to IgG or a top fraction; MACS2 defaults over-call at low background.' },
+      { name: 'Spike-in scaling (ChIP-Rx, E. coli)', text: 'Scale each sample by reads in the spike-in genome; required when global changes are plausible.' },
+    ],
+    data: [
+      'Peak numbers depend on depth, caller and threshold: a sample with twice the depth “has more peaks” for no biological reason; compare FRiP and signal at a fixed set of sites instead of peak counts.',
+      'Blacklisted and hyper-ChIPable regions produce peaks in every sample, including IgG; a peak list that was not blacklist-filtered contains the same few hundred regions on top in every experiment.',
+      'NSC/RSC and FRiP separate enrichment failures from biology: a condition with “no binding” and an RSC of 0.7 is a failed IP, not a lost binding programme.',
+      'Depth normalisation erases global changes; spike-in normalisation can invert them if the spike-in amount was not constant. Which normalisation was used is part of the result.',
+      'IDR-thresholded peak sets are conservative and reproducible but drop weak real sites; union sets are sensitive and contain noise. Neither is “the binding sites”.',
+    ],
+    check: [
+      'Per-sample NSC, RSC, FRiP, fraction of reads in blacklist, duplicate rate and spike-in fraction in one table; look for samples that fall off the group.',
+      'Fingerprint plot of all IPs and inputs together; peak overlap of IgG or input “peaks” with the IP peaks.',
+      'The pipeline’s normalisation method and whether the peak caller matched the signal type (narrow, broad, sparse background).',
+    ],
+    ask: [
+      'Which pipeline and caller, and were peaks called against a matched input from the same chromatin batch?',
+      'Were duplicates and blacklist regions removed, and were replicates merged before or after peak calling?',
+      'Is a global change in the target expected, and if so, how was it normalised?',
+    ],
+    artifacts: ['hyperchipable-regions', 'low-frip', 'spike-in-normalisation', 'duplicates', 'batch-effects'],
+  },
+
+  'rna-immunoprecipitation': {
+    title: 'RNA–protein crosslinking and immunoprecipitation',
+    short: 'Cells are UV-crosslinked (or not, for RIP), lysed, the RNA is partially digested, and one RNA-binding protein is pulled down with an antibody together with the RNA fragments it was touching. What comes off the beads is tiny, biased toward abundant RNAs, and only as specific as the antibody.',
+    inputs: 'Cultured cells or tissue, typically 10–20 million cells per eCLIP replicate; an antibody validated for IP',
+    outputs: 'Picograms of 20–100 nt RNA fragments that were bound by the protein, plus a size-matched input control',
+    bench: [
+      'In eCLIP (and its ancestors HITS-CLIP and iCLIP), living cells are irradiated with 254 nm UV on ice. UV forms a covalent bond only where an amino acid and a nucleobase are in direct contact, so the crosslink marks the actual binding site to within a nucleotide, and it does not crosslink protein to protein. The efficiency is low (often 1–5 % of complexes), which is one reason the input is measured in tens of millions of cells. PAR-CLIP instead feeds cells 4-thiouridine and crosslinks at 365 nm, which is more efficient and leaves a T→C signature in the reads. Native RIP-seq skips crosslinking altogether: the complex is held together only by its own affinity, which works for stable complexes but lets weak or transient partners fall off, and lets RNAs and proteins that never met in the cell re-associate in the lysate.',
+      'After lysis, the RNA is partially digested with RNase I (eCLIP) or micrococcal nuclease so that only the footprint under the protein survives. The dose is titrated: too much leaves fragments under ~20 nt that cannot be mapped uniquely and destroys structured sites, too little leaves long fragments that map but give no resolution and more background. The antibody is bound to protein A/G beads, incubated with the lysate, and washed. CLIP washes are harsh (high salt, detergents) because the crosslink survives them; RIP washes must be mild, so RIP carries more non-specific RNA. In eCLIP the complexes are then run on an SDS-PAGE gel, transferred to nitrocellulose, and the membrane region from the protein’s size up to ~75 kDa above it is cut out, which removes free RNA and RNA bound to other proteins. Proteinase K digests the protein, leaving a short amino-acid remnant at the crosslink site on the RNA.',
+      'The controls determine what a “target” means. eCLIP runs a size-matched input (SMInput): the same lysate, same gel region, no immunoprecipitation, so that enrichment is measured against everything of that size rather than against total RNA. RIP uses an IgG pulldown and an input. Without such a control, the list of bound RNAs is simply the list of abundant RNAs: rRNA, mitochondrial rRNA, snRNAs and the top few hundred mRNAs stick to any bead.',
+    ],
+    variants: [
+      { name: 'eCLIP (ENCODE standard)', text: '254 nm UV, RNase I, SDS-PAGE and membrane transfer, SMInput control, UMIs. Two biological replicates plus SMInput is the ENCODE minimum.' },
+      { name: 'iCLIP / iCLIP2 / irCLIP', text: 'Same crosslinking; the library is circularised after RT so truncated cDNAs are captured; infrared or radiolabel visualisation.' },
+      {
+        name: 'PAR-CLIP',
+        text: '4-thiouridine plus 365 nm UV. Crosslink sites show as T→C transitions in the reads; needs cells that take up the nucleoside, so it is mostly cell-line work.',
+      },
+      {
+        name: 'Native RIP-seq',
+        text: 'No crosslink, mild washes, whole transcripts recovered; sequenced with a standard RNA-seq library. Reports which transcripts co-purify, not where on them the protein sat.',
+      },
+      { name: 'fRIP / formaldehyde RIP', text: 'Formaldehyde fixation instead of UV; crosslinks protein–protein as well, so indirect partners are captured.' },
+    ],
+    data: [
+      'Enrichment is relative to the control. A peak caller run without SMInput or IgG returns the abundant RNAs of the cell; the same gene list appears for unrelated proteins.',
+      'Crosslinking efficiency and RNase dose set fragment length and therefore mappability: eCLIP fragments of 20–60 nt map uniquely in most of the transcriptome but not in repeats, snRNA families or rRNA, which is why rRNA and multi-mappers are discarded early.',
+      'RIP-seq reads cover whole transcripts with an RNA-seq-like profile; CLIP reads form narrow pile-ups. A broad, gene-wide signal in a CLIP dataset is background, not binding.',
+      'Antibody specificity is the dominant variable: a cross-reacting antibody pulls down a second RNA-binding protein and its targets, which looks like a biologically interesting dual specificity.',
+      'Target lists between labs differ more by antibody lot, RNase dose and control type than by biology; be cautious when comparing to a published list produced with another protocol.',
+    ],
+    check: [
+      'Fraction of reads removed as rRNA, repeat-element or multi-mapping before peak calling, and the fraction of reads in peaks after SMInput normalisation; ENCODE flags eCLIP experiments below ~1–2 % reads in peaks.',
+      'Peak overlap between the two biological replicates (IDR or simple reproducible-peak fraction); a reproducible-peak count under a few hundred usually means a weak IP.',
+      'Whether the top targets are rRNA, mt-rRNA, snRNA or the most highly expressed mRNAs of that cell type: that is the control failing, not the protein’s preference.',
+    ],
+    ask: [
+      'UV (254 or 365 nm), formaldehyde, or native? Which RNase, at what dose, and was the dose titrated for this protein?',
+      'Which antibody (vendor, lot), and what control was sequenced: SMInput, IgG, input, or a knockout/knockdown IP?',
+      'Was the IP validated by western blot and, for eCLIP, was the membrane region cut at the standard window above the protein’s size?',
+    ],
+    artifacts: ['abundance-driven-targets', 'rnase-overdigestion', 'low-input', 'rrna-reads', 'batch-effects'],
+  },
+
+  'clip-library': {
+    title: 'CLIP library: adapters on RNA, truncating RT',
+    short: 'Adapters are ligated to the tiny RNA fragments, reverse transcription stops at the crosslink, a second adapter goes onto the cDNA, and many PCR cycles turn picograms into a library. The read start is the data.',
+    inputs: 'Picograms of protein-footprint RNA fragments (20–100 nt) with a peptide remnant at the crosslink site',
+    outputs: 'Single-end library whose Read 1 begins with a UMI and in-line barcode followed by the cDNA; Read 1 start = crosslink site + 1',
+    bench: [
+      'The RNA fragments are dephosphorylated, then a 3′ RNA adapter carrying an in-line barcode and a random UMI is ligated with T4 RNA ligase; in eCLIP this happens on the beads, before the gel. After proteinase K release the RNA is reverse-transcribed. The reverse transcriptase cannot read through the amino-acid remnant left at the crosslink, so most cDNAs end one nucleotide before the crosslinked base: the 5′ end of the cDNA, which becomes the start of Read 1, points at the binding site. In HITS-CLIP and PAR-CLIP, where read-through products are kept, the information is instead a deletion or a T→C mismatch at the site.',
+      'A second adapter is then ligated to the 3′ end of the single-stranded cDNA (eCLIP, with a ssDNA ligase) or the cDNA is circularised and re-cut (iCLIP), which is what makes truncated cDNAs clonable; a standard RNA-seq library would need read-through to the first adapter and would lose them. PCR follows with 15–25 cycles, because the input is picograms; the cycle number is often chosen from a qPCR on a test aliquot. Adapter–adapter products are the most abundant species at this stage and are removed by gel or bead size selection at ~140–160 bp.',
+      'Because the UMI is ligated before PCR, reads sharing a UMI and a start position are PCR copies of one molecule and are collapsed after alignment. RIP-seq does not go this way: its recovered RNA is long, so it is fragmented, reverse-transcribed with random primers and made into a stranded RNA-seq library like any other, and the reads cover whole transcripts.',
+    ],
+    variants: [
+      {
+        name: 'eCLIP two-ligation',
+        text: '3′ RNA adapter on beads, ssDNA adapter on cDNA; UMI 10 nt at the start of Read 1 in the single-end version, in-line barcodes distinguish replicates on the same gel.',
+      },
+      { name: 'iCLIP circularisation', text: 'cDNA with a barcoded RT primer is circularised and linearised by restriction; UMI at the 5′ end of the read.' },
+      {
+        name: 'HITS-CLIP / PAR-CLIP read-through',
+        text: 'Both adapters on the RNA before RT; only cDNAs that read through the crosslink are captured; sites appear as deletions (HITS-CLIP) or T→C (PAR-CLIP).',
+      },
+      { name: 'seCLIP / single-end eCLIP', text: 'Same chemistry, single-end sequencing with the UMI in Read 1; the ENCODE default since 2017.' },
+    ],
+    data: [
+      'The first nucleotides of Read 1 are the UMI and in-line barcode, not biology: they must be moved into the read name (`umi_tools extract`, Cutadapt `-u`) before alignment, or every read mis-aligns by that offset.',
+      'Reads are short (often 20–40 nt of genomic sequence after trimming) and pile up with identical start coordinates. The pile-up is the crosslink signal, so duplicate marking by position alone would delete the data; deduplicate by UMI plus start position (`umi_tools dedup`) instead.',
+      'Duplication rates of 50–90 % are normal: picogram input through 20 PCR cycles. What matters is the number of unique molecules after UMI collapsing, not the raw read count.',
+      'Peaks are called against SMInput with CLIPper, PureCLIP, PEAKachu or omniCLIP; enrichment is a log₂ fold change and p-value per peak, and ENCODE keeps peaks with log₂FC ≥ 3 and p ≤ 10⁻³. Crosslink-site pile-ups can be called at single-nucleotide resolution from read starts (iCLIP, eCLIP).',
+      'In PAR-CLIP the T→C transitions are the signal and must not be filtered as sequencing errors or SNPs; in HITS-CLIP the same is true of single-nucleotide deletions at the site.',
+    ],
+    check: [
+      'Adapter-dimer fraction and the read-length histogram after trimming: a spike at 0–10 nt inserts is dimer, and a library that is mostly dimer cannot be rescued by depth.',
+      '`umi_tools dedup` log: unique molecules per sample and the ratio of reads to molecules; replicate agreement should be judged on unique molecules.',
+      'Read-start distribution relative to the peak summit: a sharp position-specific stack supports a crosslink site; a flat profile across a transcript indicates background or a RIP-type library.',
+    ],
+    ask: [
+      'eCLIP, iCLIP, PAR-CLIP, HITS-CLIP or RIP-seq? Where is the UMI and how long is it, and what are the in-line barcodes per sample?',
+      'How many PCR cycles, and what was the adapter-dimer fraction on the final trace?',
+      'Was the library sequenced single-end, and does Read 1 start at the cDNA 5′ end (truncation site) or the 3′ end?',
+    ],
+    artifacts: ['crosslink-truncation', 'duplicates', 'umis', 'adapter-dimers', 'low-input'],
+  },
+
+  'probe-hybridization': {
+    title: 'Probe hybridization',
+    short: 'A finished, indexed shotgun library is denatured and left to anneal for hours with biotinylated baits that match the targets. The probe set, not the genome, now decides what can be seen.',
+    inputs: 'Indexed, pre-capture-amplified library (typically 100–500 ng per library, 8–16 libraries per pool)',
+    outputs: 'Bait–library hybrids in solution, with off-target library still present',
+    bench: [
+      'Capture starts from a complete shotgun library: fragmented, adapter-ligated, indexed and amplified for typically 6–10 cycles so that there is enough mass to hybridise. The library is dried or concentrated, mixed with blockers, denatured at 95 °C and incubated with a pool of biotinylated single-stranded baits, 80–120-mers of DNA or RNA tiled across the targets. Hybridisation runs at ~65 °C for anywhere from 4 h (fast protocols) to 16–24 h (classic SureSelect); the long incubation is what lets rare target molecules find a bait. Two kinds of blocker are in the tube: Cot-1 DNA (or synthetic repeat blockers) soaks up repetitive sequence so that an Alu in a target fragment does not pull in every Alu in the library, and adapter blockers (universal or index-specific oligos) cover the adapter ends so that library molecules do not daisy-chain to each other through shared adapter sequence. Weak adapter blocking is a main source of off-target reads.',
+      'Most facilities capture in multiplex: 8–16 pre-indexed libraries are pooled by mass into one hybridisation. This saves bait but means the libraries compete for the same baits, so a library that was under-quantified ends up under-represented after capture, and any sequence shared between libraries (an abundant transcript, a viral genome at high titre) can bridge molecules of two samples through the bait during hybridisation. The cross-talk this produces is capture-pool specific, unlike index hopping, which is lane specific.',
+      'The probe design decides the data before sequencing starts. Tiling density (1× to 2× overlap), probe GC balancing, whether probes were boosted for hard regions, and the reference used to design them all differ between vendors and versions (SureSelect v6 vs v7/v8, Twist Core vs Comprehensive Exome, IDT xGen v1 vs v2). Regions without a probe, such as novel exons, poorly annotated genes or any sequence more than ~10–15 % divergent from the design, are invisible. The baits also pull in 50–150 bp of flanking sequence on each side of every target (“padding”), so coverage tails off into introns rather than stopping at the exon boundary. Viral and pathogen capture panels (VirCapSeq-VERT, Twist Comprehensive Viral Research Panel) are the same chemistry with probes designed across hundreds to thousands of viral genomes, where divergence from the design is the dominant effect on coverage.',
+    ],
+    variants: [
+      {
+        name: 'Whole-exome capture (SureSelect, Twist, xGen)',
+        text: 'Tens of megabases of target, typically 60–80 % on-target. Vendor and version change which exons are covered; compare samples only within one design.',
+      },
+      {
+        name: 'Targeted gene panels',
+        text: 'Kilobases to a few megabases. On-target fraction is lower and more variable; depth is high (500–5,000×) and duplicate rates are correspondingly high.',
+      },
+      {
+        name: 'Viral / pathogen capture',
+        text: 'Probes tiled across many viral genomes; works on degraded or low-titre material from a high-host background. Coverage falls with divergence from the probes, and a virus absent from the design is simply not seen.',
+      },
+      {
+        name: 'RNA baits vs DNA baits',
+        text: 'RNA baits (classic SureSelect) hybridise more tightly and are destroyed afterwards; DNA baits (Twist, xGen) are more stable. The on-target and GC behaviour differ slightly between the two.',
+      },
+    ],
+    data: [
+      'Coverage exists only where there was a probe. A gene with zero coverage in every sample is usually a design gap, not a homozygous deletion; check the target BED and the probe BED before interpreting.',
+      'Coverage tails into the flanks of every target. Variants called in the padding (±50–100 bp) have lower depth and are often filtered by one pipeline and kept by another, which causes apparent discordance between callers.',
+      'Different exome designs across a cohort look like a batch effect: whole regions covered in one batch and absent in another, and systematic depth differences in GC-rich targets.',
+      'Multiplex capture gives capture-pool-specific cross-talk: low-level alleles shared only among the libraries that sat in the same hybridisation tube.',
+      'Divergent targets are under-captured, so in viral capture and in population genetics of non-reference strains a region with low or no coverage may be present but too different from the baits.',
+    ],
+    check: [
+      'Get the exact probe/target BED (vendor, version, padding) and intersect your coverage with it; compute the fraction of zero-coverage targets per sample (`CollectHsMetrics` ZERO_CVG_TARGETS_PCT).',
+      'Plot per-target normalised coverage against target GC for one sample; a steep fall above ~65 % GC is the probe set, not the sample.',
+      'Record which samples were captured together and test whether low-frequency shared variants cluster by capture pool.',
+    ],
+    ask: [
+      'Which probe set, which version, and was the same design used for every sample? Can we have the target and probe BED files?',
+      'How many libraries per capture pool, and which samples shared a pool? Were index-specific adapter blockers used?',
+      'Hybridisation time, and were any regions boosted or custom probes added?',
+    ],
+    artifacts: ['probe-dropout', 'off-target-reads', 'padding-artefacts', 'gc-bias', 'index-hopping', 'batch-effects'],
+  },
+
+  'capture-pulldown': {
+    title: 'Streptavidin pulldown & post-capture PCR',
+    short: 'Beads pull the bait–library hybrids out of solution, washes strip off-target molecules, and a second PCR rebuilds a sequenceable library from a few nanograms. This is where capture libraries get their duplicates.',
+    inputs: 'Hybridisation reaction (bait–library hybrids plus unbound library)',
+    outputs: 'Enriched, re-amplified library, typically 60–80 % on-target for exomes',
+    bench: [
+      'Streptavidin-coated magnetic beads bind the biotin on the baits and, with it, every library molecule annealed to a bait. The supernatant, which holds the bulk of the library, is discarded. The beads are then washed at raised temperature (typically 65 °C) in buffers of decreasing salt. Each wash is a stringency decision: molecules that are only partly complementary to a bait, such as a divergent viral strain, a paralogue or a fragment with a short overlap, come off first. Too-stringent washing loses exactly the targets that are hardest to capture; too-lax washing keeps off-target fragments that were held by a few bases of adapter or repeat. The on-target fraction, usually 60–80 % for an exome and anywhere from 10 to 70 % for small panels, is set by these washes together with the blocking in the previous step.',
+      'What is left on the beads is a few nanograms at most, far below what a flow cell needs, so the library is amplified again, typically 8–14 cycles (more for small panels and for viral capture from low-titre samples). This post-capture PCR is the main source of duplicate reads in capture data: the number of distinct molecules per target was fixed when the beads were washed, and every cycle after that only copies them. High depth over a small target therefore means that the same few hundred molecules per target are sequenced again and again. The duplicate rate after marking is the honest measure of how many molecules were captured, and it rises with smaller panels, lower input and more cycles. The post-capture library is quantified and sized like any other library (Bioanalyzer/TapeStation plus qPCR); a shift to shorter fragments or a visible 120–150 bp peak after capture means adapter dimers or bait–adapter products survived the washes.',
+      'Two refinements are common. A second round of hybridisation and pulldown (“double capture”) raises the on-target fraction from, say, 30 % to over 80 % for small panels and for viral capture out of a host-dominated sample, at the cost of more PCR and fewer unique molecules. For low-frequency variant calling (liquid biopsy, minimal residual disease) the pre-capture adapters carry UMIs or duplex UMIs, so that after capture the PCR copies can be collapsed into molecule-level or strand-aware consensus reads, which is the only way to tell a 0.5 % allele from a polymerase error.',
+    ],
+    variants: [
+      { name: 'Single capture', text: 'Standard for exomes. One hybridisation, one pulldown, 8–12 post-capture cycles.' },
+      { name: 'Double capture', text: 'Second hybridisation of the first eluate; typical for small panels and viral capture. Higher on-target, lower complexity, more cycles.' },
+      {
+        name: 'UMI / duplex-UMI capture (cfDNA panels)',
+        text: 'Adapters carry molecular barcodes before capture; reads are collapsed per molecule or per original duplex. Required for allele fractions below ~1 %.',
+      },
+      { name: 'Fast / automated protocols', text: 'Shortened washes and hybridisation on liquid handlers; slightly lower on-target but far more reproducible between batches.' },
+    ],
+    data: [
+      'Duplicate rates of 10–30 % for exomes and 50–90 % for deep small panels are expected; raw depth overstates the number of molecules observed by that factor. Report and reason with deduplicated depth.',
+      'Allele fractions at a site are drawn from a few hundred molecules, so a heterozygous site at 200× raw depth can read 30:70 after duplicates are collapsed. Expect wider allele-fraction distributions than in WGS at the same nominal depth.',
+      'Insert size after capture is often shorter and tighter than before it, because short fragments hybridise and wash through more efficiently; the insert distribution of a capture library is not evidence about the input DNA.',
+      'Off-target reads are not junk: they are a 0.1–2× low-pass genome of the same sample, usable for sex check, contamination estimates and coarse CNV, but not for variant calling.',
+      'Stringent washing or a divergent sample removes partially matching molecules, so regions of low coverage can mean “different from the probes” rather than “absent”, especially in viral capture and in non-reference strains.',
+    ],
+    check: [
+      'Picard `MarkDuplicates` percent duplication and `EstimateLibraryComplexity` per sample; plot against on-target fraction and input mass.',
+      'Pre- vs post-capture Bioanalyzer traces and library yields, if the facility will share them; a post-capture peak near 120–150 bp is dimer.',
+      'Allele-fraction histogram of known heterozygous SNPs after deduplication: a wide spread around 0.5 means few molecules per site.',
+    ],
+    ask: [
+      'Single or double capture? How many post-capture PCR cycles, and were they the same for every sample?',
+      'Were UMIs or duplex adapters used, and are they in the read or in the header?',
+      'What was the measured on-target fraction and duplicate rate on the facility’s QC run?',
+    ],
+    artifacts: ['duplicates', 'pcr-jackpotting', 'off-target-reads', 'low-input', 'adapter-dimers', 'insert-size', 'umis'],
+  },
+
+  'on-target-metrics': {
+    title: 'On-target metrics and what they allow',
+    short: 'Which reads count, how even the coverage is and how many molecules stand behind each base are set by the target file and the capture, not the aligner. The metrics decide which analyses the data can support.',
+    inputs: 'Aligned, duplicate-marked BAM; target and probe BED files; padding setting',
+    outputs: 'HsMetrics table; per-target coverage; a defined callable region',
+    bench: [
+      'Computational, but it defines the experiment. Alignment is ordinary, but everything after it is conditioned on an interval file. The target BED (exons, panel regions, viral genomes) and the padding applied to it decide which reads are “on target”, which bases are “callable”, and which variants are reported at all. Two pipelines given the same BAM but different padding (0 vs 100 bp) produce different variant lists and different coverage numbers for the same sample. Duplicates must be marked before coverage is computed, otherwise depth reports count PCR copies as independent molecules.',
+      'Picard `CollectHsMetrics` is the standard summary: PCT_SELECTED_BASES (on-target fraction), MEAN_TARGET_COVERAGE, PCT_TARGET_BASES_20X and 30X (how much of the target is usable), FOLD_80_BASE_PENALTY (how much more sequencing it would take to lift the lowest 20 % of targets to the mean; 1.5–2.5 is typical, higher means uneven capture), ZERO_CVG_TARGETS_PCT and AT_DROPOUT / GC_DROPOUT. Coverage drops out predictably in GC-rich first exons and promoters, in targets overlapping pseudogenes or segmental duplications where reads lose MAPQ, and in anything divergent from the probe design. Because probe efficiency dominates per-target coverage, copy-number calling from capture data needs a panel of normals captured with the same design and batch to divide out the probe effect; a single-sample depth plot is mostly a picture of the probe set.',
+      'Variant allele fractions behave differently from WGS. At 100× raw depth a capture site may rest on 40 unique molecules, so allele fractions scatter widely and low-frequency calls need UMI-collapsed depth, not raw depth, in the denominator. Off-target reads form a sparse genome-wide layer that is good for sex determination, contamination estimation (VerifyBamID), ancestry and coarse CNV, and bad for anything that needs confident genotypes. In viral capture the host fraction is reported separately, genome coverage is interpreted against divergence from the probes (a 70 %-covered genome may be a divergent strain, not a low titre), and the absence of a virus means only that nothing hybridised to the probes that were present.',
+    ],
+    variants: [
+      {
+        name: 'Exome germline pipeline',
+        text: 'HsMetrics on padded targets, GATK or DeepVariant restricted to the intervals, CNV with a panel of normals (GATK gCNV, ExomeDepth, CNVkit).',
+      },
+      {
+        name: 'Deep somatic panel',
+        text: 'UMI consensus (fgbio), per-molecule depth, error models per trinucleotide context, strict interval restriction; allele fractions reported with molecule counts.',
+      },
+      {
+        name: 'Viral capture reporting',
+        text: 'Host-subtracted reads, per-genome breadth and depth, probe-coverage mask, consensus with N-masking below a depth threshold; absence is “not detected with this panel”.',
+      },
+    ],
+    data: [
+      'Variant lists depend on the interval file and padding at least as much as on the caller; keep the BED under version control next to the pipeline.',
+      'FOLD_80_BASE_PENALTY above ~3 and ZERO_CVG_TARGETS_PCT above a few percent flag a poor capture; both are per sample and often per batch.',
+      'Single-sample depth plots reflect probe efficiency; CNV calls without a matched panel of normals are mostly probe artefacts.',
+      'Allele-fraction noise is set by unique molecules per site, not by raw depth; report deduplicated or UMI-consensus depth with every variant.',
+      'Coverage breadth of a viral genome mixes titre with divergence from the baits; a partial genome with high depth on the covered part suggests divergence, a partial genome with low depth everywhere suggests low titre.',
+    ],
+    check: [
+      '`CollectHsMetrics` per sample with the exact vendor BEDs; compare PCT_SELECTED_BASES, FOLD_80 and PCT_TARGET_BASES_20X across batches.',
+      'Per-target coverage heatmap across all samples: targets missing in every sample are design gaps; targets missing in one batch are a capture failure; a target missing in one sample may be a deletion.',
+      'VerifyBamID or a sex check using off-target reads; it is free with the data.',
+    ],
+    ask: [
+      'Which interval file and padding did the facility use for its QC numbers, so ours are comparable?',
+      'Is there a panel of normals captured with the same design and in the same period for CNV work?',
+      'For viral panels: the list of genomes in the design and its version, so that “not detected” can be qualified.',
+    ],
+    artifacts: ['off-target-reads', 'probe-dropout', 'padding-artefacts', 'pcr-jackpotting', 'uneven-depth'],
+  },
+
+  'tiled-amplicon-pcr': {
+    title: 'Tiled multiplex amplicon PCR',
+    short: 'Two pools of ~100 primer pairs each amplify overlapping ~400 bp pieces of a known viral genome from the cDNA. Coverage is decided here, amplicon by amplicon, by the primers, the viral load and the cycle count.',
+    inputs: 'First-strand cDNA from the viral RNA extract (random-hexamer primed)',
+    outputs: 'Two tubes of overlapping amplicons (pool 1 and pool 2) per sample, later combined',
+    bench: [
+      'A primer scheme (ARTIC V3, V4.1, V5.3.2 for SARS-CoV-2; schemes exist for Zika, Ebola, mpox, influenza, RSV, HIV, and any phage or virus whose genome is known) tiles the genome with amplicons of roughly 400 bp (Midnight and some newer schemes use ~1,200 bp) that overlap their neighbours by 50–100 bp. Neighbouring amplicons overlap, so if they were in one tube the forward primer of amplicon n and the reverse primer of amplicon n+1 would make a short product that would out-compete everything else. The scheme is therefore split into two pools of alternating amplicons (odd in pool 1, even in pool 2), each run as a separate multiplex PCR of typically 25–35 cycles with a hot-start polymerase (Q5 is the ARTIC standard). The pools are then combined and taken into library prep. Commercial kits (Illumina COVIDSeq, QIAseq DIRECT, Swift/xGen Amplicon, Paragon CleanPlex) do the same thing with proprietary primers and sometimes more pools.',
+      'Each amplicon is its own small PCR with its own efficiency. Anything that weakens one primer pair lowers that amplicon relative to its neighbours: a mutation under a primer (the Alpha and Delta waves each knocked out ARTIC V3 amplicons, which is why V4 and V4.1 exist), primer degradation, pool imbalance, or a primer concentration that was never quite right. Below a few hundred genome copies (diagnostic Ct above ~30) amplification becomes stochastic: some amplicons simply never find a template, the ones that do are amplified from one or two molecules and show as near-100 % duplication, and the amplicon-to-amplicon imbalance grows from 10-fold to 1,000-fold. At the same time the empty reactions make primer dimers and chimeras between amplicons because the primers have nothing else to anneal to.',
+      'Because the method amplifies a few hundred molecules by a million-fold, it is exquisitely sensitive to contamination. Positive controls (synthetic RNA such as Twist controls, or a high-titre culture) and strong samples contaminate weak ones by aerosol or on the plate; a no-template control is run with every batch for this reason. The primer scheme name and version, and the BED file that goes with it, are not optional metadata: without them the analyst cannot trim primers or interpret a coverage gap.',
+    ],
+    variants: [
+      {
+        name: 'ARTIC V3 / V4.1 / V5.3.2 (~400 bp)',
+        text: 'The open scheme most pipelines assume by default; versions differ in which amplicons exist and where their primers sit. V3 lost amplicons 64, 72 and 73 to lineage mutations.',
+      },
+      {
+        name: 'Midnight (~1,200 bp, ONT)',
+        text: 'Fewer, longer amplicons; fewer dropouts from single mutations but more sensitive to RNA degradation, since a 1,200 bp amplicon needs an intact 1,200 nt template.',
+      },
+      {
+        name: 'Commercial kits (COVIDSeq, QIAseq DIRECT, xGen, CleanPlex)',
+        text: 'Proprietary primers and their own BED files; some add a human control. The analyst needs the kit’s BED, not ARTIC’s.',
+      },
+      {
+        name: 'Custom schemes (PrimalScheme, varVAMP)',
+        text: 'Designed for any known genome, including phages and non-model viruses; coverage depends on how well the design reference matches the sample’s strain.',
+      },
+    ],
+    data: [
+      'Depth is amplicon-shaped: a staircase of plateaus with sharp edges at primer positions, not a smooth profile. A gap is a dropped amplicon, not a deletion, unless the reads on either side say otherwise.',
+      'Every read starts at a primer; both read ends are fixed, so all reads of an amplicon look like duplicates. Duplicate marking would remove most of the data.',
+      'The first ~22–30 bases of each read are primer, i.e. synthetic copies of the reference, and carry no information about the sample at that position.',
+      'Coverage per amplicon follows the primer pair’s efficiency and the sample’s viral load, not the virus’s biology; it is not comparable between schemes or batches as a quantity.',
+      'Low-template samples carry chimeras between amplicons, primer dimers, and whatever the positive control or the neighbouring well contained.',
+    ],
+    check: [
+      'Per-amplicon depth table (`mosdepth` or `samtools bedcov` over the scheme’s insert BED): the pattern of low amplicons across samples, and whether it follows pool, Ct or primer version.',
+      'The no-template control’s read count and consensus coverage; anything above a few hundred mapped reads means contamination in the batch.',
+      'Insert-size or read-length histogram before trimming: amplicon length ± primers, with a short peak if primer dimers survived.',
+    ],
+    ask: [
+      'Which primer scheme and version, and can you send the exact BED file? Were any primers spiked in or replaced?',
+      'What was each sample’s diagnostic Ct, how many cycles were run, and were cycles adjusted by Ct band?',
+      'Which positive control was used and where did it sit on the plate relative to my samples?',
+    ],
+    artifacts: [
+      'amplicon-dropout',
+      'amplicon-cross-contamination',
+      'primers-in-reads',
+      'primer-bias',
+      'chimeras',
+      'low-input',
+      'duplicates',
+    ],
+  },
+
+  'amplicon-consensus': {
+    title: 'Primer trimming and consensus',
+    short: 'Reads are aligned to the reference, primers are cut away by coordinate, depth is masked, and a consensus genome is called. Every N, every missed variant and most false ones come from decisions made here.',
+    inputs: 'FASTQ from the amplicon library; the scheme’s primer BED; a reference genome',
+    outputs: 'Primer-trimmed BAM, consensus FASTA with N where depth is low, a variant table with allele frequencies, lineage calls',
+    bench: [
+      'Computational, but it defines what the genome is. Reads are aligned to the reference (minimap2 or bwa mem), then primers are removed by position, not by sequence: `ivar trim`, the ARTIC pipeline’s `align_trim`, or `samtools ampliconclip` soft-clip the bases that fall inside a primer interval from the BED. Sequence-based trimming cannot work, because the primer is a perfect copy of the reference and is indistinguishable from the genome. A read that was amplified by one primer pair is only trusted outside that pair’s primers; a variant that sits under a primer is visible only in reads from the overlapping amplicon of the other pool, which covers that position with its insert. If the BED is for the wrong scheme version, primers are left in place and every sample looks reference-like under them, or genuine sequence is clipped away.',
+      'Consensus calling then applies a depth mask: positions with fewer than a threshold of reads (ivar’s default `-m 10`, the ARTIC pipeline’s 20×) become N, and the base at the others is the majority allele above a frequency threshold (often 0.75 for ivar). A dropped amplicon therefore becomes a run of ~300 N, which some viewers and some lineage tools treat like a deletion or missing data, and which can make Nextclade or pangolin report lineage-defining sites as missing, with “scorpio” constellation conflicts and lower-confidence calls. Duplicates are never marked: by construction every read of an amplicon shares its ends.',
+      'Minor variants come from the same alignments. Illumina data support a practical floor around 3–5 % allele frequency once amplification errors, primer-site artefacts and strand bias are controlled; ONT needs more. A minor variant can be within-host diversity, a mixed infection, cross-contamination from another sample, or an amplification or sequencing error, and the frequency alone does not say which. Wastewater and other pooled samples are deliberately mixtures, deconvolved into lineage proportions with tools such as Freyja from the frequencies of lineage-defining mutations.',
+    ],
+    variants: [
+      { name: 'ARTIC fieldbioinformatics (ONT)', text: 'Each read is one amplicon; `align_trim` also normalises depth per amplicon; medaka or Clair3 for variants; 20× mask.' },
+      {
+        name: 'ivar / viralrecon (Illumina)',
+        text: '2×150 or 2×250 reads that overlap heavily within a 400 bp amplicon; `ivar trim` then `ivar variants` and `ivar consensus`; nf-core/viralrecon wraps the lot with QC.',
+      },
+      { name: 'Wastewater and mixtures (Freyja, LCS)', text: 'No single consensus is meaningful; lineage abundances are estimated from allele frequencies and depth per site.' },
+    ],
+    data: [
+      'The consensus is a function of three thresholds (depth mask, consensus frequency, minimum base quality) and the BED file; two labs can produce different genomes from the same FASTQ.',
+      'Variants under primer positions are systematically missed or called wrong if primers were not trimmed, or if the other pool’s amplicon also dropped out.',
+      'N runs are amplicon dropouts and align exactly to primer coordinates; a true deletion is spanned by reads with a gap in the alignment and is visible in the pileup.',
+      'Allele frequencies are per-amplicon estimates from a handful of template molecules at low viral load; a 20 % minor variant from a Ct-35 sample may rest on two molecules.',
+      'Coverage depth cannot be read as viral load or as a biological signal; it is primer efficiency times template availability.',
+    ],
+    check: [
+      'Genome completeness (fraction non-N) against Ct; N runs listed with their coordinates and matched to amplicon inserts.',
+      'Pipeline log for the BED file and scheme version actually used, and for the depth and frequency thresholds.',
+      'Variant table: allele frequency, depth and strand counts per site; flag sites inside primer intervals and sites that are 1–5 % in many samples of one batch.',
+    ],
+    ask: [
+      'Which pipeline, which BED file and which thresholds produced the consensus I was given? Can I have the trimmed BAM?',
+      'Was anything run on the same plate at high titre, and did the no-template control come out clean?',
+    ],
+    artifacts: ['amplicon-dropout', 'primer-site-variants', 'amplicon-cross-contamination', 'duplicates', 'index-hopping'],
+  },
 };
 
 export const stepOrderForIndex = Object.keys(steps);

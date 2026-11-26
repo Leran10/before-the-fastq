@@ -31,8 +31,13 @@ to GitHub Pages (serve the repository root).
 | Metatranscriptomics on Illumina | 17 | Stranded 2×75–150 paired FASTQ plus matched shotgun DNA |
 | DNA methylation: WGBS and EM-seq | 16 | Three-letter-alphabet FASTQ; per-cytosine methylation tables |
 | Hi-C and proximity ligation | 14 | Paired FASTQ where the mates are two distant loci; .pairs / .cool matrices |
+| ATAC-seq: open chromatin | 12 | 2×50 paired FASTQ, Nextera adapters; fragments with a nucleosome ladder |
+| ChIP-seq, CUT&RUN and CUT&Tag | 15 | Paired FASTQ enriched at bound sites; peaks need an input or IgG control |
+| RIP-seq and eCLIP | 13 | Single-end reads starting with a UMI; read starts mark crosslink sites |
+| Hybrid capture: exome, panels, viral capture | 17 | 2×100–150 paired FASTQ, 60–80 % on target; HsMetrics |
+| Tiled amplicon viral sequencing (ARTIC) | 15 | Amplicon-shaped coverage; consensus genome with N runs at dropouts |
 
-Steps are written once and reused across workflows (47 steps in the library);
+Steps are written once and reused across workflows (61 steps in the library);
 workflow-specific caveats appear as notes. A cross-cutting **artifact index**
 (duplicates, adapter read-through, index hopping, poly-G, strandedness, …)
 goes from what you see in the data back to the bench step that produced it.
